@@ -1,0 +1,338 @@
+[
+  {
+    "id": 1425,
+    "name": "Lucas Jackson"
+  },
+  {
+    "id": 1440,
+    "name": "Wolverine"
+  },
+  {
+    "id": 1441,
+    "name": "Magneto"
+  },
+  {
+    "id": 1442,
+    "name": "Captain America"
+  },
+  {
+    "id": 1443,
+    "name": "Spider-Man"
+  },
+  {
+    "id": 1444,
+    "name": "Storm"
+  },
+  {
+    "id": 1445,
+    "name": "Juggernaut"
+  },
+  {
+    "id": 1446,
+    "name": "Rogue"
+  },
+  {
+    "id": 1447,
+    "name": "Layla Miller"
+  },
+  {
+    "id": 1449,
+    "name": "She-Hulk"
+  },
+  {
+    "id": 1450,
+    "name": "Luke Cage"
+  },
+  {
+    "id": 1451,
+    "name": "Sam Wilson"
+  },
+  {
+    "id": 1453,
+    "name": "Spider-Woman"
+  },
+  {
+    "id": 1454,
+    "name": "Sentry"
+  },
+  {
+    "id": 1455,
+    "name": "Iron Man"
+  },
+  {
+    "id": 1456,
+    "name": "Doctor Strange"
+  },
+  {
+    "id": 1457,
+    "name": "Emma Frost"
+  },
+  {
+    "id": 1459,
+    "name": "Cyclops"
+  },
+  {
+    "id": 1460,
+    "name": "Colossus"
+  },
+  {
+    "id": 1461,
+    "name": "Nightcrawler"
+  },
+  {
+    "id": 1462,
+    "name": "Beast"
+  },
+  {
+    "id": 1463,
+    "name": "Moonstar"
+  },
+  {
+    "id": 1464,
+    "name": "Iceman"
+  },
+  {
+    "id": 1465,
+    "name": "Wonder Man"
+  },
+  {
+    "id": 1466,
+    "name": "Scarlet Witch"
+  },
+  {
+    "id": 1467,
+    "name": "Quicksilver"
+  },
+  {
+    "id": 1468,
+    "name": "Doctor Doom"
+  },
+  {
+    "id": 1469,
+    "name": "Mystique"
+  },
+  {
+    "id": 1470,
+    "name": "Toad"
+  },
+  {
+    "id": 1472,
+    "name": "Captain Marvel"
+  },
+  {
+    "id": 1473,
+    "name": "Polaris"
+  },
+  {
+    "id": 1474,
+    "name": "Cloak"
+  },
+  {
+    "id": 1475,
+    "name": "Hawkeye"
+  },
+  {
+    "id": 1476,
+    "name": "Namor"
+  },
+  {
+    "id": 1477,
+    "name": "Black Panther"
+  },
+  {
+    "id": 1478,
+    "name": "Sasquatch"
+  },
+  {
+    "id": 1479,
+    "name": "Black Cat"
+  },
+  {
+    "id": 1480,
+    "name": "Gwen Stacy"
+  },
+  {
+    "id": 1483,
+    "name": "Kingpin"
+  },
+  {
+    "id": 1485,
+    "name": "Doctor Octopus"
+  },
+  {
+    "id": 1486,
+    "name": "Venom"
+  },
+  {
+    "id": 1487,
+    "name": "J. Jonah Jameson"
+  },
+  {
+    "id": 1488,
+    "name": "Lizard"
+  },
+  {
+    "id": 1489,
+    "name": "Flash Thompson"
+  },
+  {
+    "id": 1490,
+    "name": "Carnage"
+  },
+  {
+    "id": 1491,
+    "name": "Misty Knight"
+  },
+  {
+    "id": 1492,
+    "name": "Iron Fist"
+  },
+  {
+    "id": 1493,
+    "name": "Moon Knight"
+  },
+  {
+    "id": 1494,
+    "name": "Colleen Wing"
+  },
+  {
+    "id": 1496,
+    "name": "Cannonball"
+  },
+  {
+    "id": 1498,
+    "name": "Dazzler"
+  },
+  {
+    "id": 1499,
+    "name": "Gambit"
+  },
+  {
+    "id": 1501,
+    "name": "Yellowjacket (DeMara)"
+  },
+  {
+    "id": 1502,
+    "name": "Wasp"
+  },
+  {
+    "id": 1503,
+    "name": "Bishop"
+  },
+  {
+    "id": 1504,
+    "name": "Vision"
+  },
+  {
+    "id": 1505,
+    "name": "Professor X"
+  },
+  {
+    "id": 1525,
+    "name": "Punisher"
+  },
+  {
+    "id": 1526,
+    "name": "Microchip"
+  },
+  {
+    "id": 1527,
+    "name": "Recoil"
+  },
+  {
+    "id": 1528,
+    "name": "Tarantula (Rodríguez)"
+  },
+  {
+    "id": 1529,
+    "name": "Batroc"
+  },
+  {
+    "id": 1530,
+    "name": "Rapido"
+  },
+  {
+    "id": 1532,
+    "name": "Snakebite"
+  },
+  {
+    "id": 1534,
+    "name": "Black Bear"
+  },
+  {
+    "id": 1535,
+    "name": "Chauffard"
+  },
+  {
+    "id": 1536,
+    "name": "Typhoid Mary"
+  },
+  {
+    "id": 1538,
+    "name": "Jigsaw"
+  },
+  {
+    "id": 1750,
+    "name": "Baroshtok"
+  },
+  {
+    "id": 1755,
+    "name": "Domini"
+  },
+  {
+    "id": 1756,
+    "name": "Taj Nital"
+  },
+  {
+    "id": 1757,
+    "name": "Bloodstorm"
+  },
+  {
+    "id": 1763,
+    "name": "Marlene Drake"
+  },
+  {
+    "id": 1776,
+    "name": "Ethan Edwards"
+  },
+  {
+    "id": 1779,
+    "name": "Absorbing Man"
+  },
+  {
+    "id": 1780,
+    "name": "Aunt May"
+  },
+  {
+    "id": 1781,
+    "name": "Jarvis"
+  },
+  {
+    "id": 1782,
+    "name": "Robbie Robertson"
+  },
+  {
+    "id": 1797,
+    "name": "Daisuke Sasaki"
+  },
+  {
+    "id": 1798,
+    "name": "Kagenobu Yoshioka"
+  },
+  {
+    "id": 1799,
+    "name": "Eliza Martinez"
+  },
+  {
+    "id": 1801,
+    "name": "Kikuchi"
+  },
+  {
+    "id": 1802,
+    "name": "Elektra"
+  },
+  {
+    "id": 1803,
+    "name": "Saburo Ishiyama"
+  }
+]

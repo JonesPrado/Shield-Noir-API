@@ -1,0 +1,73 @@
+import random
+import httpx
+
+from app.schemas import CharacterData
+from app.config import COMIC_VINE_API_KEY
+from app.data.marvel_characters import MARVEL_CHARACTERS
+
+BASE_URL = "https://comicvine.gamespot.com/api/"
+
+def prepare_character(character: dict) -> CharacterData:
+    """Prepares character data for the investigation case."""
+    return CharacterData(
+        id=character["id"],
+        name=character["name"],
+        real_name=character.get("real_name"),
+        deck=character.get("deck"),
+        powers=character.get("powers", []),
+    )
+    
+async def get_characters_by_ids(character_ids: list[int]):
+    """Fetches multiple characters by their IDs in batches."""
+    if not COMIC_VINE_API_KEY:
+        raise RuntimeError("COMIC_VINE_API_KEY não foi definida.")
+
+    characters = []
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for start in range(0, len(character_ids), 50):
+            batch = character_ids[start:start + 50]
+
+            ids = "|".join(str(character_id) for character_id in batch)
+
+            response = await client.get(
+                f"{BASE_URL}characters/",
+                params={
+                    "api_key": COMIC_VINE_API_KEY,
+                    "format": "json",
+                    "filter": f"id:{ids}",
+                    "field_list": "id,name,real_name,deck,powers,teams,publisher,image",
+                    "limit": 5,
+                },
+                headers={
+                    "User-Agent": "ShieldNoir/1.0"
+                },
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("status_code") != 1:
+                raise RuntimeError(
+                    data.get("error", "Comic Vine API falhou na requisição.")
+                )
+
+            characters.extend(data["results"])
+
+    return characters
+
+async def get_random_marvel_characters(amount: int = 5):
+    """Fetches random Marvel characters from the predefined pool."""
+    character_ids = [
+        character["id"]
+        for character in MARVEL_CHARACTERS
+    ]
+
+    selected_ids = random.sample(character_ids, amount)
+
+    characters = await get_characters_by_ids(selected_ids)
+
+    return [
+        prepare_character(character)
+        for character in characters
+    ]
