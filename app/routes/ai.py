@@ -16,6 +16,7 @@ from app.schemas import AdditionalQuestions, InvestigationCase, Question
 N_SUSPECTS = 10
 N_QUESTIONS = 10
 MIN_QUESTIONS = 10
+QUESTIONS_PER_CALL = 7
 MAX_PROFILE_CHARS = 300
 
 def _to_dict(character) -> dict:
@@ -52,9 +53,9 @@ def _build_prompt(characters: list) -> str:
     )
     return f"""
 Crie um caso Shield Noir usando exclusivamente estes 10 personagens.
-Escolha 1 culpado entre eles. Gere 3 clues curtas e de 7 a
-{N_QUESTIONS} questions simples de sim/não; as perguntas restantes podem ser
-solicitadas depois. Cada question deve testar uma
+Escolha 1 culpado entre eles. Gere 3 clues curtas e exatamente
+{QUESTIONS_PER_CALL} questions simples de sim/não; as perguntas restantes
+serão solicitadas depois. Cada question deve testar uma
 única característica sustentada pelo perfil; não misture propriedades nem
 invente fatos. Escreva description do caso e dos suspeitos em português
 brasileiro. Em crime_moment, escreva um álibi/depoimento individual e
@@ -66,10 +67,22 @@ questions.text em português brasileiro. Preserve name, name_pt e IDs
 exatamente como recebidos; não traduza name. Evite nomes/identidades nas
 perguntas. Prefira características compartilhadas por vários suspeitos e
 divisões razoáveis; evite características exclusivas de um personagem.
-Antes de incluir cada question, avalie suas 10 respostas e conte true/false:
-aceite somente divisões 5/5, 4/6, 6/4, 3/7 ou 7/3; descarte 0/10, 1/9,
-2/8 e equivalentes. Não gere perguntas só para preencher a quantidade e não
-mostre esse raciocínio.
+Antes de incluir uma pergunta, confirme que a característica aparece nos
+perfis fornecidos e que a resposta ajuda a eliminar um grupo de suspeitos.
+Use perguntas concretas e objetivas; evite termos vagos como perigoso,
+poderoso, habilidoso ou conhecido sem definição factual no perfil. Teste uma
+única propriedade, não uma combinação. Varie as categorias e não reformule a
+mesma característica. A prioridade é: factualidade, clareza, utilidade para
+investigação, não revelar um personagem e só então equilíbrio da divisão.
+Antes de escrever o JSON, crie internamente mais candidatas do que precisa,
+calcule as 10 respostas de cada uma e conte true/false. Descarte internamente
+qualquer candidata vaga, inventada, repetida, identificadora ou com divisão
+0/10, 1/9, 2/8, 8/2, 9/1 ou 10/0; uma pergunta com menos de 3 ou mais de
+7 respostas true é inválida, mesmo que pareça factual. Substitua-a por outra
+candidata factual. Só retorne exatamente {QUESTIONS_PER_CALL} perguntas
+aprovadas, com divisão 5/5, 4/6, 6/4, 3/7 ou 7/3. Não use conhecimento
+externo da Marvel: se a característica não estiver clara no perfil recebido,
+não use a pergunta. Não mostre esse raciocínio.
 Relacione em cada clue somente suspeitos justificáveis pelos dados fornecidos.
 Use exatamente os ids, names e name_pt recebidos, como inteiros. Em answers,
 suspect_id deve ser um desses IDs e answer deve ser booleano JSON true ou
@@ -111,12 +124,23 @@ Gere somente novas perguntas para o caso existente. Não gere um novo caso,
 id do caso, culprit_id, description, suspects ou clues. Retorne somente JSON
 válido neste formato: {{"questions":[{{"id":{proximo_id},"text":"O suspeito possui poderes elétricos?","answers":[{{"suspect_id":{exemplo_ids[0]},"answer":true}},{{"suspect_id":{exemplo_ids[1]},"answer":false}}]}}]}}.
 
-Gere exatamente {N_QUESTIONS} perguntas novas em português brasileiro. Cada
-elemento de questions é uma pergunta completa com id inteiro, text e answers.
+Gere exatamente {QUESTIONS_PER_CALL} perguntas novas em português brasileiro.
+Cada elemento de questions é uma pergunta completa com id inteiro, text e answers.
 Cada pergunta deve conter exatamente uma resposta para cada um dos 10
 suspeitos. Use IDs de perguntas a partir de {proximo_id}, sem reutilizar IDs
 aprovados. Evite identidade direta, prefira características compartilhadas e
-divida razoavelmente os 10 suspeitos.
+divida razoavelmente os 10 suspeitos. Aplique os mesmos critérios das
+perguntas principais: use somente fatos sustentados pelos perfis, seja
+concreto e útil para eliminar suspeitos, teste uma única característica,
+evite termos vagos, nomes, aliases, títulos, poderes ou organizações que
+identifiquem diretamente alguém e varie em relação às perguntas aprovadas.
+Aceite uma pergunta somente se ela for factual, clara, útil, distinta e
+dividir os suspeitos em grupos. Antes de responder, calcule as 10 respostas
+de cada candidata e descarte qualquer divisão diferente de 5/5, 4/6, 6/4,
+3/7 ou 7/3. Menos de 3 ou mais de 7 respostas true invalida a candidata.
+Se uma candidata falhar, substitua-a internamente; retorne exatamente
+{QUESTIONS_PER_CALL} perguntas aprovadas. Não use conhecimento externo da
+Marvel para completar o lote.
 Não repita nem seja semanticamente semelhante às perguntas aprovadas.
 Cada answer deve ser booleano JSON true ou false, nunca texto, e cada
 suspect_id deve ser um dos 10 IDs inteiros fornecidos.
@@ -320,6 +344,7 @@ def _validar_e_reparar(
     aproveitar o resto."""
     controlled_by_id = {character["id"]: character for character in MARVEL_CHARACTERS}
     character_data = [_to_dict(character) for character in characters]
+    character_by_id = {character["id"]: character for character in character_data}
     controlled_ids = {character.get("id") for character in character_data}
     if len(character_data) != N_SUSPECTS or len(controlled_ids) != N_SUSPECTS:
         raise ValueError(f"O elenco recebido precisa ter exatamente {N_SUSPECTS} personagens distintos.")
@@ -336,6 +361,7 @@ def _validar_e_reparar(
         suspeito.model_copy(update={
             "name": controlled_by_id[suspeito.id]["name"],
             "name_pt": controlled_by_id[suspeito.id]["name_pt"],
+            "image_url": character_by_id[suspeito.id].get("image_url"),
         })
         for suspeito in case.suspects
     ]
@@ -478,6 +504,9 @@ async def _com_retry(
 
             if not complementar:
                 case = await gerar_caso(characters)
+                case = case.model_copy(
+                    update={"questions": case.questions[:QUESTIONS_PER_CALL]}
+                )
                 parcial = _validar_e_reparar(
                     case,
                     characters,
@@ -487,6 +516,11 @@ async def _com_retry(
                 caso_base = parcial
             else:
                 adicionais = await gerar_adicionais(characters, perguntas_aprovadas)
+                adicionais = adicionais.model_copy(
+                    update={
+                        "questions": adicionais.questions[:QUESTIONS_PER_CALL]
+                    }
+                )
                 print(
                     f"[QUESTIONS] Provider={provider} | Rodada={rodada} | "
                     f"Perguntas complementares recebidas={len(adicionais.questions)}"
@@ -606,9 +640,7 @@ async def _gerar_groq(characters: list) -> InvestigationCase:
     response = await groq_client.chat.completions.create(
         model=GROQ_MODEL,
         messages=[{"role": "user", "content": _build_prompt(characters)}],
-        # JSON mode evita texto livre; o prompt abaixo reforça todos os campos
-        # porque este modelo/provedor não recebe o schema Pydantic diretamente.
-        response_format={"type": "json_object"},
+        reasoning_effort="low",
         max_tokens=6144,
     )
     content = _extrair_conteudo_resposta(response)
@@ -627,7 +659,7 @@ async def _gerar_groq_adicionais(
             "role": "user",
             "content": _build_additional_questions_prompt(characters, perguntas_aprovadas),
         }],
-        response_format={"type": "json_object"},
+        reasoning_effort="low",
         max_tokens=6144,
     )
     content = _extrair_conteudo_resposta(response)
@@ -640,9 +672,7 @@ async def _gerar_openrouter(characters: list) -> InvestigationCase:
     response = await openrouter_client.chat.completions.create(
         model=OPENROUTER_MODEL,
         messages=[{"role": "user", "content": _build_prompt(characters)}],
-        # O modelo gratuito nem sempre respeita json_schema estrito; JSON
-        # mode é mais compatível e a validação Pydantic continua obrigatória.
-        response_format={"type": "json_object"},
+        reasoning_effort="low",
         max_tokens=6144,
     )
 
@@ -664,7 +694,7 @@ async def _gerar_openrouter_adicionais(
             "role": "user",
             "content": _build_additional_questions_prompt(characters, perguntas_aprovadas),
         }],
-        response_format={"type": "json_object"},
+        reasoning_effort="low",
         max_tokens=6144,
     )
     content = _extrair_conteudo_resposta(response)
@@ -702,6 +732,7 @@ def _caso_fallback_estatico(characters: list | None = None) -> InvestigationCase
             "id": character["id"],
             "name": character["name"],
             "name_pt": character["name_pt"],
+            "image_url": received_by_id.get(character["id"], {}).get("image_url"),
             "description": (
                 str(received_by_id.get(character["id"], {}).get("deck") or "")[:300]
                 or f"{character['name_pt']} é um personagem da lista controlada do caso."
@@ -775,6 +806,7 @@ async def generate_case(characters: list[dict]) -> InvestigationCase:
             _gerar_groq,
             _gerar_groq_adicionais,
             characters,
+            tentativas=4,
             provider="Groq",
         )
     except Exception as groq_error:
@@ -786,6 +818,7 @@ async def generate_case(characters: list[dict]) -> InvestigationCase:
             _gerar_openrouter,
             _gerar_openrouter_adicionais,
             characters,
+            tentativas=4,
             provider="OpenRouter",
         )
     except Exception as openrouter_error:

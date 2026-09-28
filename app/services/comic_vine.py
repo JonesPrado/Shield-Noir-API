@@ -6,6 +6,25 @@ from app.config import COMIC_VINE_API_KEY
 from app.data.marvel_characters import MARVEL_CHARACTERS
 
 BASE_URL = "https://comicvine.gamespot.com/api/"
+IMAGE_URL_FIELDS = (
+    "super_url",
+    "screen_large_url",
+    "screen_url",
+    "medium_url",
+    "small_url",
+    "icon_url",
+)
+
+
+def _extract_image_url(character: dict) -> str | None:
+    image = character.get("image")
+    if not isinstance(image, dict):
+        return None
+    for field in IMAGE_URL_FIELDS:
+        value = image.get(field)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
 
 def prepare_character(character: dict, catalog_entry: dict) -> CharacterData:
     """Prepares character data for the investigation case."""
@@ -13,6 +32,7 @@ def prepare_character(character: dict, catalog_entry: dict) -> CharacterData:
         id=character["id"],
         name=catalog_entry["name"],
         name_pt=catalog_entry["name_pt"],
+        image_url=_extract_image_url(character),
         real_name=character.get("real_name"),
         deck=character.get("deck"),
         powers=character.get("powers", []),

@@ -4,6 +4,7 @@ class CharacterData(BaseModel):
     id: StrictInt
     name: str
     name_pt: str = ""
+    image_url: str | None = None
     real_name: str | None = None
     deck: str | None = None
     powers: list[dict] = []
@@ -12,6 +13,7 @@ class Suspect(BaseModel):
     id: StrictInt
     name: str
     name_pt: str = ""
+    image_url: str | None = None
     description: str
     crime_moment: str
 
