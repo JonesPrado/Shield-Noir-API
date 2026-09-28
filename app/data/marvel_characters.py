@@ -1,414 +1,105 @@
 MARVEL_CHARACTERS = [
-  {
-    "name": "Iron Man",
-    "id": 1455
-  },
-  {
-    "name": "Captain America",
-    "id": 1442
-  },
-  {
-    "name": "Thor",
-    "id": 2268
-  },
-  {
-    "name": "Hulk",
-    "id": 2267
-  },
-  {
-    "name": "Black Widow",
-    "id": 3200
-  },
-  {
-    "name": "Hawkeye",
-    "id": 1475
-  },
-  {
-    "name": "Ant-Man",
-    "id": 20577
-  },
-  {
-    "name": "Wasp",
-    "id": 1502
-  },
-  {
-    "name": "Captain Marvel",
-    "id": 1472
-  },
-  {
-    "name": "Falcon",
-    "id": 3448
-  },
-  {
-    "name": "Winter Soldier",
-    "id": 181124
-  },
-  {
-    "name": "Vision",
-    "id": 1504
-  },
-  {
-    "name": "Scarlet Witch",
-    "id": 1466
-  },
-  {
-    "name": "Black Panther",
-    "id": 1477
-  },
-  {
-    "name": "Doctor Strange",
-    "id": 1456
-  },
-  {
-    "name": "Spider-Man",
-    "id": 1443
-  },
-  {
-    "name": "Shang-Chi",
-    "id": 12716
-  },
-  {
-    "name": "War Machine",
-    "id": 1926
-  },
-  {
-    "name": "Nick Fury",
-    "id": 3202
-  },
-  {
-    "name": "Valkyrie",
-    "id": 6809
-  },
-  {
-    "name": "Wong",
-    "id": 2215
-  },
-  {
-    "name": "Shuri",
-    "id": 24430
-  },
-  {
-    "name": "Ms. Marvel",
-    "id": 140532
-  },
-  {
-    "name": "She-Hulk",
-    "id": 1449
-  },
-  {
-    "name": "Kate Bishop",
-    "id": 2262
-  },
-  {
-    "name": "Yelena Belova",
-    "id": 19397
-  },
-  {
-    "name": "America Chavez",
-    "id": 78932
-  },
-  {
-    "name": "Monica Rambeau",
-    "id": 11337
-  },
-  {
-    "name": "Ironheart",
-    "id": 29801
-  },
-  {
-    "name": "Sylvie",
-    "id": 62021
-  },
-  {
-    "name": "Quicksilver",
-    "id": 1467
-  },
-  {
-    "name": "Abomination",
-    "id": 3489
-  },
-  {
-    "name": "Moon Knight",
-    "id": 1493
-  },
-  {
-    "name": "Daredevil",
-    "id": 24694
-  },
-  {
-    "name": "Jessica Jones",
-    "id": 2265
-  },
-  {
-    "name": "Luke Cage",
-    "id": 1450
-  },
-  {
-    "name": "Iron Fist",
-    "id": 1492
-  },
-  {
-    "name": "Punisher",
-    "id": 1525
-  },
-  {
-    "name": "Echo",
-    "id": 3601
-  },
-  {
-    "name": "Elektra",
-    "id": 1802
-  },
-  {
-    "name": "Agatha Harkness",
-    "id": 3327
-  },
-  {
-    "name": "Blade",
-    "id": 7570
-  },
-  {
-    "name": "Ghost Rider",
-    "id": 5652
-  },
-  {
-    "name": "Wolverine",
-    "id": 1440
-  },
-  {
-    "name": "Professor X",
-    "id": 1505
-  },
-  {
-    "name": "Magneto",
-    "id": 1441
-  },
-  {
-    "name": "Jean Grey",
-    "id": 3552
-  },
-  {
-    "name": "Cyclops",
-    "id": 1459
-  },
-  {
-    "name": "Storm",
-    "id": 1444
-  },
-  {
-    "name": "Rogue",
-    "id": 1446
-  },
-  {
-    "name": "Gambit",
-    "id": 1499
-  },
-  {
-    "name": "Beast",
-    "id": 1462
-  },
-  {
-    "name": "Nightcrawler",
-    "id": 1461
-  },
-  {
-    "name": "Mystique",
-    "id": 1469
-  },
-  {
-    "name": "Deadpool",
-    "id": 7606
-  },
-  {
-    "name": "Colossus",
-    "id": 1460
-  },
-  {
-    "name": "Iceman",
-    "id": 1464
-  },
-  {
-    "name": "X-23",
-    "id": 3560
-  },
-  {
-    "name": "Cable",
-    "id": 2157
-  },
-  {
-    "name": "Sabretooth",
-    "id": 4563
-  },
-  {
-    "name": "Apocalypse",
-    "id": 5564
-  },
-  {
-    "name": "Psylocke",
-    "id": 9709
-  },
-  {
-    "name": "Emma Frost",
-    "id": 1457
-  },
-  {
-    "name": "Jubilee",
-    "id": 4562
-  },
-  {
-    "name": "Kitty Pryde",
-    "id": 3548
-  },
-  {
-    "name": "Star-Lord",
-    "id": 10957
-  },
-  {
-    "name": "Gamora",
-    "id": 6806
-  },
-  {
-    "name": "Drax",
-    "id": 3483
-  },
-  {
-    "name": "Rocket Raccoon",
-    "id": 32814
-  },
-  {
-    "name": "Groot",
-    "id": 12488
-  },
-  {
-    "name": "Nebula",
-    "id": 14558
-  },
-  {
-    "name": "Mantis",
-    "id": 3324
-  },
-  {
-    "name": "Yondu",
-    "id": 2170
-  },
-  {
-    "name": "Adam Warlock",
-    "id": 6805
-  },
-  {
-    "name": "Mr. Fantastic",
-    "id": 2151
-  },
-  {
-    "name": "Invisible Woman",
-    "id": 2190
-  },
-  {
-    "name": "Human Torch",
-    "id": 2120
-  },
-  {
-    "name": "The Thing",
-    "id": 2114
-  },
-  {
-    "name": "Silver Surfer",
-    "id": 2502
-  },
-  {
-    "name": "Galactus",
-    "id": 2149
-  },
-  {
-    "name": "Doctor Doom",
-    "id": 1468
-  },
-  {
-    "name": "Miles Morales",
-    "id": 79420
-  },
-  {
-    "name": "Spider-Gwen",
-    "id": 1480
-  },
-  {
-    "name": "Venom",
-    "id": 1486
-  },
-  {
-    "name": "Green Goblin",
-    "id": 73890
-  },
-  {
-    "name": "Doctor Octopus",
-    "id": 1485
-  },
-  {
-    "name": "Mysterio",
-    "id": 4333
-  },
-  {
-    "name": "Sandman",
-    "id": 3544
-  },
-  {
-    "name": "Electro",
-    "id": 3228
-  },
-  {
-    "name": "Vulture",
-    "id": 4459
-  },
-  {
-    "name": "Kraven the Hunter",
-    "id": 2475
-  },
-  {
-    "name": "Black Cat",
-    "id": 1479
-  },
-  {
-    "name": "Kingpin",
-    "id": 1483
-  },
-  {
-    "name": "Carnage",
-    "id": 1490
-  },
-  {
-    "name": "Thanos",
-    "id": 7607
-  },
-  {
-    "name": "Loki",
-    "id": 4324
-  },
-  {
-    "name": "Ultron",
-    "id": 2242
-  },
-  {
-    "name": "Killmonger",
-    "id": 6111
-  },
-  {
-    "name": "Hela",
-    "id": 4336
-  },
-  {
-    "name": "Red Skull",
-    "id": 2250
-  },
-  {
-    "name": "Kang the Conqueror",
-    "id": 2264
-  },
-  {
-    "name": "M.O.D.O.K.",
-    "id": 3709
-  },
-  {
-    "name": "Taskmaster",
-    "id": 4578
-  }
+  { "name": "Iron Man", "id": 1455, "name_pt": "Homem de Ferro" },
+  { "name": "Captain America", "id": 1442, "name_pt": "Capitão América" },
+  { "name": "Thor", "id": 2268, "name_pt": "Thor" },
+  { "name": "Hulk", "id": 2267, "name_pt": "Hulk" },
+  { "name": "Black Widow", "id": 3200, "name_pt": "Viúva Negra" },
+  { "name": "Hawkeye", "id": 1475, "name_pt": "Gavião Arqueiro" },
+  { "name": "Ant-Man", "id": 20577, "name_pt": "Homem-Formiga" },
+  { "name": "Wasp", "id": 1502, "name_pt": "Vespa" },
+  { "name": "Captain Marvel", "id": 1472, "name_pt": "Capitã Marvel" },
+  { "name": "Falcon", "id": 3448, "name_pt": "Falcão" },
+  { "name": "Winter Soldier", "id": 181124, "name_pt": "Soldado Invernal" },
+  { "name": "Vision", "id": 1504, "name_pt": "Visão" },
+  { "name": "Scarlet Witch", "id": 1466, "name_pt": "Feiticeira Escarlate" },
+  { "name": "Black Panther", "id": 1477, "name_pt": "Pantera Negra" },
+  { "name": "Doctor Strange", "id": 1456, "name_pt": "Doutor Estranho" },
+  { "name": "Spider-Man", "id": 1443, "name_pt": "Homem-Aranha" },
+  { "name": "Shang-Chi", "id": 12716, "name_pt": "Shang-Chi" },
+  { "name": "War Machine", "id": 1926, "name_pt": "Máquina de Combate" },
+  { "name": "Nick Fury", "id": 3202, "name_pt": "Nick Fury" },
+  { "name": "Valkyrie", "id": 6809, "name_pt": "Valquíria" },
+  { "name": "Wong", "id": 2215, "name_pt": "Wong" },
+  { "name": "Shuri", "id": 24430, "name_pt": "Shuri" },
+  { "name": "Ms. Marvel", "id": 140532, "name_pt": "Miss Marvel" },
+  { "name": "She-Hulk", "id": 1449, "name_pt": "Mulher-Hulk" },
+  { "name": "Kate Bishop", "id": 2262, "name_pt": "Kate Bishop" },
+  { "name": "Yelena Belova", "id": 19397, "name_pt": "Yelena Belova" },
+  { "name": "America Chavez", "id": 78932, "name_pt": "América Chavez" },
+  { "name": "Monica Rambeau", "id": 11337, "name_pt": "Monica Rambeau" },
+  { "name": "Ironheart", "id": 29801, "name_pt": "Coração de Ferro" },
+  { "name": "Sylvie", "id": 62021, "name_pt": "Sylvie" },
+  { "name": "Quicksilver", "id": 1467, "name_pt": "Mercúrio" },
+  { "name": "Abomination", "id": 3489, "name_pt": "Abominável" },
+  { "name": "Moon Knight", "id": 1493, "name_pt": "Cavaleiro da Lua" },
+  { "name": "Daredevil", "id": 24694, "name_pt": "Demolidor" },
+  { "name": "Jessica Jones", "id": 2265, "name_pt": "Jessica Jones" },
+  { "name": "Luke Cage", "id": 1450, "name_pt": "Luke Cage" },
+  { "name": "Iron Fist", "id": 1492, "name_pt": "Punho de Ferro" },
+  { "name": "Punisher", "id": 1525, "name_pt": "Justiceiro" },
+  { "name": "Echo", "id": 3601, "name_pt": "Eco" },
+  { "name": "Elektra", "id": 1802, "name_pt": "Elektra" },
+  { "name": "Agatha Harkness", "id": 3327, "name_pt": "Agatha Harkness" },
+  { "name": "Blade", "id": 7570, "name_pt": "Blade" },
+  { "name": "Ghost Rider", "id": 5652, "name_pt": "Motoqueiro Fantasma" },
+  { "name": "Wolverine", "id": 1440, "name_pt": "Wolverine" },
+  { "name": "Professor X", "id": 1505, "name_pt": "Professor X" },
+  { "name": "Magneto", "id": 1441, "name_pt": "Magneto" },
+  { "name": "Jean Grey", "id": 3552, "name_pt": "Jean Grey" },
+  { "name": "Cyclops", "id": 1459, "name_pt": "Ciclope" },
+  { "name": "Storm", "id": 1444, "name_pt": "Tempestade" },
+  { "name": "Rogue", "id": 1446, "name_pt": "Vampira" },
+  { "name": "Gambit", "id": 1499, "name_pt": "Gambit" },
+  { "name": "Beast", "id": 1462, "name_pt": "Fera" },
+  { "name": "Nightcrawler", "id": 1461, "name_pt": "Noturno" },
+  { "name": "Mystique", "id": 1469, "name_pt": "Mística" },
+  { "name": "Deadpool", "id": 7606, "name_pt": "Deadpool" },
+  { "name": "Colossus", "id": 1460, "name_pt": "Colosso" },
+  { "name": "Iceman", "id": 1464, "name_pt": "Homem de Gelo" },
+  { "name": "X-23", "id": 3560, "name_pt": "X-23" },
+  { "name": "Cable", "id": 2157, "name_pt": "Cable" },
+  { "name": "Sabretooth", "id": 4563, "name_pt": "Dente de Sabre" },
+  { "name": "Apocalypse", "id": 7612, "name_pt": "Apocalipse" },
+  { "name": "Psylocke", "id": 9709, "name_pt": "Psylocke" },
+  { "name": "Emma Frost", "id": 1457, "name_pt": "Emma Frost" },
+  { "name": "Jubilee", "id": 4562, "name_pt": "Jubileu" },
+  { "name": "Kitty Pryde", "id": 3548, "name_pt": "Kitty Pryde" },
+  { "name": "Star-Lord", "id": 10957, "name_pt": "Senhor das Estrelas" },
+  { "name": "Gamora", "id": 6806, "name_pt": "Gamora" },
+  { "name": "Drax", "id": 3483, "name_pt": "Drax, o Destruidor" },
+  { "name": "Rocket Raccoon", "id": 32814, "name_pt": "Rocket Raccoon" },
+  { "name": "Groot", "id": 12488, "name_pt": "Groot" },
+  { "name": "Nebula", "id": 14558, "name_pt": "Nebulosa" },
+  { "name": "Mantis", "id": 3324, "name_pt": "Mantis" },
+  { "name": "Yondu", "id": 2170, "name_pt": "Yondu" },
+  { "name": "Adam Warlock", "id": 6805, "name_pt": "Adam Warlock" },
+  { "name": "Mr. Fantastic", "id": 2151, "name_pt": "Senhor Fantástico" },
+  { "name": "Invisible Woman", "id": 2190, "name_pt": "Mulher Invisível" },
+  { "name": "Human Torch", "id": 2120, "name_pt": "Tocha Humana" },
+  { "name": "The Thing", "id": 2114, "name_pt": "O Coisa" },
+  { "name": "Silver Surfer", "id": 2502, "name_pt": "Surfista Prateado" },
+  { "name": "Galactus", "id": 2149, "name_pt": "Galactus" },
+  { "name": "Doctor Doom", "id": 1468, "name_pt": "Doutor Destino" },
+  { "name": "Miles Morales", "id": 79420, "name_pt": "Miles Morales" },
+  { "name": "Spider-Gwen", "id": 1480, "name_pt": "Spider-Gwen" },
+  { "name": "Venom", "id": 1486, "name_pt": "Venom" },
+  { "name": "Green Goblin", "id": 73890, "name_pt": "Duende Verde" },
+  { "name": "Doctor Octopus", "id": 1485, "name_pt": "Doutor Octopus" },
+  { "name": "Mysterio", "id": 4333, "name_pt": "Mysterio" },
+  { "name": "Sandman", "id": 3544, "name_pt": "Homem-Areia" },
+  { "name": "Electro", "id": 3228, "name_pt": "Eletro" },
+  { "name": "Vulture", "id": 4459, "name_pt": "Abutre" },
+  { "name": "Kraven the Hunter", "id": 2475, "name_pt": "Kraven, o Caçador" },
+  { "name": "Black Cat", "id": 1479, "name_pt": "Gata Negra" },
+  { "name": "Kingpin", "id": 1483, "name_pt": "Rei do Crime" },
+  { "name": "Carnage", "id": 1490, "name_pt": "Carnificina" },
+  { "name": "Thanos", "id": 7607, "name_pt": "Thanos" },
+  { "name": "Loki", "id": 4324, "name_pt": "Loki" },
+  { "name": "Ultron", "id": 2242, "name_pt": "Ultron" },
+  { "name": "Killmonger", "id": 6111, "name_pt": "Killmonger" },
+  { "name": "Hela", "id": 4336, "name_pt": "Hela" },
+  { "name": "Red Skull", "id": 2250, "name_pt": "Caveira Vermelha" },
+  { "name": "Kang the Conqueror", "id": 2264, "name_pt": "Kang, o Conquistador" },
+  { "name": "M.O.D.O.K.", "id": 3709, "name_pt": "M.O.D.O.K." },
+  { "name": "Taskmaster", "id": 4578, "name_pt": "Mestre-Tarefa" }
 ]

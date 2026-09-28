@@ -7,11 +7,12 @@ from app.data.marvel_characters import MARVEL_CHARACTERS
 
 BASE_URL = "https://comicvine.gamespot.com/api/"
 
-def prepare_character(character: dict) -> CharacterData:
+def prepare_character(character: dict, catalog_entry: dict) -> CharacterData:
     """Prepares character data for the investigation case."""
     return CharacterData(
         id=character["id"],
-        name=character["name"],
+        name=catalog_entry["name"],
+        name_pt=catalog_entry["name_pt"],
         real_name=character.get("real_name"),
         deck=character.get("deck"),
         powers=character.get("powers", []),
@@ -37,7 +38,7 @@ async def get_characters_by_ids(character_ids: list[int]):
                     "format": "json",
                     "filter": f"id:{ids}",
                     "field_list": "id,name,real_name,deck,powers,teams,publisher,image",
-                    "limit": 5,
+                    "limit": len(batch),
                 },
                 headers={
                     "User-Agent": "ShieldNoir/1.0"
@@ -56,18 +57,21 @@ async def get_characters_by_ids(character_ids: list[int]):
 
     return characters
 
-async def get_random_marvel_characters(amount: int = 5):
+async def get_random_marvel_characters(amount: int = 10):
     """Fetches random Marvel characters from the predefined pool."""
-    character_ids = [
-        character["id"]
-        for character in MARVEL_CHARACTERS
-    ]
+    catalog_by_id = {character["id"]: character for character in MARVEL_CHARACTERS}
+    if amount > len(catalog_by_id):
+        raise ValueError("A lista controlada não possui personagens suficientes.")
 
-    selected_ids = random.sample(character_ids, amount)
+    selected_entries = random.sample(list(catalog_by_id.values()), amount)
+    selected_ids = [character["id"] for character in selected_entries]
 
     characters = await get_characters_by_ids(selected_ids)
+    characters_by_id = {character["id"]: character for character in characters}
+    if set(characters_by_id) != set(selected_ids):
+        raise RuntimeError("Comic Vine não retornou todos os personagens selecionados.")
 
     return [
-        prepare_character(character)
-        for character in characters
+        prepare_character(characters_by_id[character["id"]], character)
+        for character in selected_entries
     ]

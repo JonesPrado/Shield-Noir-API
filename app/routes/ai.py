@@ -1,4 +1,6 @@
 import json
+import re
+import unicodedata
 
 from google import genai
 from groq import AsyncGroq
@@ -8,158 +10,13 @@ from app.config import (
   GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY,
   GEMINI_MODEL, GROQ_MODEL, OPENROUTER_MODEL
 )
-from app.schemas import InvestigationCase, Question
+from app.data.marvel_characters import MARVEL_CHARACTERS
+from app.schemas import AdditionalQuestions, InvestigationCase, Question
 
-N_QUESTIONS = 12  # pedido no prompt, ideal
-MIN_QUESTIONS = 7  # aceitável de verdade — modelos não seguem número exato com confiabilidade
-
-# PROMPT FORMATO JSON
-JSON_PROMPT = f"""
-FORMATO OBRIGATÓRIO DO JSON:
-
-- O campo raiz deve se chamar "id", nunca "case_id".
-- Cada suspect deve possuir exatamente os campos: id, name, description, crime_moment.
-- Cada clue deve ser um objeto com os campos: id, description, related_suspects.
-- Cada question deve ser um objeto com os campos: id, text, answers.
-  "answers" é uma LISTA de objetos, um por suspeito, cada um com:
-  suspect_id (o id do suspeito) e answer (true ou false).
-  TODOS os 5 suspeitos precisam aparecer em "answers" de TODA pergunta —
-  ou seja, cada "answers" tem exatamente 5 itens.
-- Deve haver exatamente 5 suspects.
-- Deve haver exatamente 3 clues.
-- Deve haver PELO MENOS {MIN_QUESTIONS} questions (o ideal é {N_QUESTIONS}, mas nunca menos que {MIN_QUESTIONS}).
-- Todos os IDs dos suspects devem ser diferentes.
-- culprit_id deve corresponder ao id de exatamente um dos suspects.
-- related_suspects deve conter apenas IDs dos suspects.
-- Retorne exclusivamente um JSON válido.
-- Não altere os nomes dos campos definidos acima.
-
-EXEMPLO DO FORMATO OBRIGATÓRIO (com só 2 questions pra caber aqui — no caso
-real são {N_QUESTIONS}):
-
-{{
-  "id": 1234,
-  "culprit_id": 5678,
-  "description": *A descrição deve ser super criativa, seguindo de acordo com os poderes e contexto do personagem de uma forma que não indicie o culpado. Pode ser um crime, roubo, assassinato, invasão mascarada, infinitas possibilidades. Deve ter bastante capricho e detalhes, mas sem ficar muito grande.*.",
-  "suspects": [
-    {{
-      "id": 5678,
-      "name": "Example Character 1",
-      "description": "Descrição breve do suspeito.",
-      "crime_moment": "Afirma que estava em outro local, mas a explicação tem uma lacuna sutil de horário."
-    }},
-    {{
-      "id": 9012,
-      "name": "Example Character 2",
-      "description": "Descrição breve do suspeito.",
-      "crime_moment": "Ouviram afirmar que estava conversando com uma testemunha confiável."
-    }},
-    {{
-      "id": 3456,
-      "name": "Example Character 3",
-      "description": "Descrição breve do suspeito.",
-      "crime_moment": "Afirmou que estava investigando outro local, com registro que confirma."
-    }},
-    {{
-      "id": 7890,
-      "name": "Example Character 4",
-      "description": "Descrição breve do suspeito.",
-      "crime_moment": "Comentou que estava chegando ao evento no momento do crime."
-    }},
-    {{
-      "id": 2468,
-      "name": "Example Character 5",
-      "description": "Descrição breve do suspeito.",
-      "crime_moment": "Falou que estava deixando o local antes do crime acontecer."
-    }}
-  ],
-  "clues": [
-    {{
-      "id": 1,
-      "description": "Um objeto compatível com uma habilidade do culpado foi encontrado próximo ao cofre — mas também poderia pertencer a outro suspeito com poder parecido.",
-      "related_suspects": [5678, 9012]
-    }},
-    {{
-      "id": 2,
-      "description": "Uma gravação mostra uma inconsistência de horário no depoimento do culpado.",
-      "related_suspects": [5678]
-    }},
-    {{
-      "id": 3,
-      "description": "Uma evidência física exclui um dos suspeitos inocentes, sem tocar diretamente no culpado.",
-      "related_suspects": [3456]
-    }}
-  ],
-  "questions": [
-    {{
-      "id": 1,
-      "text": "O suspeito possui algum tipo de arma ou apêndice mecânico/metálico?",
-      "answers": [
-        {{"suspect_id": 5678, "answer": true}},
-        {{"suspect_id": 9012, "answer": false}},
-        {{"suspect_id": 3456, "answer": false}},
-        {{"suspect_id": 7890, "answer": false}},
-        {{"suspect_id": 2468, "answer": false}}
-      ]
-    }},
-    {{
-      "id": 2,
-      "text": "O suspeito tem ligação direta com alguma equipe reconhecida de heróis?",
-      "answers": [
-        {{"suspect_id": 5678, "answer": true}},
-        {{"suspect_id": 9012, "answer": true}},
-        {{"suspect_id": 3456, "answer": false}},
-        {{"suspect_id": 7890, "answer": true}},
-        {{"suspect_id": 2468, "answer": false}}
-      ]
-    }}
-  ]
-}}
-
-IMPORTANTE:
-
-- Este é apenas um exemplo de estrutura (com menos questions do que o real).
-- Os personagens e valores do exemplo NÃO devem ser utilizados na resposta.
-- O caso real deve utilizar exclusivamente os personagens fornecidos.
-- Os 5 suspects devem ser personagens diferentes da lista fornecida.
-- Não invente personagens.
-- Não invente poderes/habilidades que não estejam na descrição fornecida do personagem.
-- Retorne exclusivamente um JSON válido.
-- Não altere os nomes dos campos.
-"""
-
-# REGRAS DE SOLUCIONABILIDADE — a parte que faltava.
-# Sem isso, nada garante que exista um caminho de dedução até o culpado.
-SOLVABILITY_RULES = """
-REGRAS DE SOLUCIONABILIDADE (as mais importantes — um caso que não obedece
-isso é um caso quebrado, mesmo que o JSON seja válido):
-
-- O culprit_id DEVE aparecer em related_suspects de PELO MENOS 2 das 3 clues.
-  Nunca deixe o culpado fora de todas as pistas — isso torna o caso
-  impossível de resolver por lógica, só por chute.
-- Cada um dos outros 4 suspeitos (inocentes) deve aparecer em PELO MENOS 1
-  clue — seja como red herring (parece culpado mas tem explicação) ou como
-  alguém que uma clue EXCLUI (evidência que não bate com ele).
-- Nas questions: cada pergunta deve dividir os 5 suspeitos de forma
-  DESIGUAL (nunca todos true ou todos false — isso não elimina ninguém e
-  é uma pergunta inútil).
-  O conjunto de respostas de CADA suspeito, olhando TODAS AS PERGUNTAS
-  GERADAS juntas, precisa ser ÚNICO. — nenhum par de
-  suspeitos pode ter exatamente o mesmo padrão de true/false em todas as
-  perguntas, senão fica impossível distinguir os dois.
-- Baseie as respostas nos poderes/afiliação/perfil REAIS de cada
-  personagem fornecido — nunca invente características aleatórias.
-- O crime_moment do culpado deve ter uma inconsistência sutil e específica
-  (horário que não fecha, poder que não explica o método, local que
-  contradiz uma clue) — sutil o bastante pra não entregar de cara, mas
-  real o bastante pra alguma clue apontar pra ela.
-- Os crime_moment dos suspeitos inocentes devem ser consistentes entre si
-  e com pelo menos uma clue que os isenta (parcial ou totalmente).
-- Nunca revele o nome do culpado literalmente em description, clues ou
-  questions — a solução vem de cruzar clue + crime_moment + answers, não
-  de uma frase que entrega a resposta.
-"""
-
+N_SUSPECTS = 10
+N_QUESTIONS = 10
+MIN_QUESTIONS = 10
+MAX_PROFILE_CHARS = 300
 
 def _to_dict(character) -> dict:
     """Aceita tanto CharacterData (pydantic) quanto dict — não depende de
@@ -167,35 +24,278 @@ def _to_dict(character) -> dict:
     return character.model_dump() if hasattr(character, "model_dump") else character
 
 
+def _compact_character(character) -> dict:
+    data = _to_dict(character)
+    powers = []
+    for power in data.get("powers") or []:
+        if isinstance(power, dict):
+            item = {key: str(power[key])[:80] for key in ("name", "description") if power.get(key)}
+        else:
+            item = str(power)[:80]
+        if item:
+            powers.append(item)
+    return {
+        "id": data.get("id"),
+        "name": data.get("name"),
+        "name_pt": data.get("name_pt"),
+        "real_name": data.get("real_name"),
+        "deck": str(data.get("deck") or "")[:MAX_PROFILE_CHARS],
+        "powers": powers[:5],
+    }
+
+
 def _build_prompt(characters: list) -> str:
-    characters_json = json.dumps([_to_dict(c) for c in characters], ensure_ascii=False, indent=2)
+    characters_json = json.dumps(
+        [_compact_character(c) for c in characters],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     return f"""
-Você é o responsável por criar casos investigativos para o jogo Shield Noir.
+Crie um caso Shield Noir usando exclusivamente estes 10 personagens.
+Escolha 1 culpado entre eles. Gere 3 clues curtas e de 7 a
+{N_QUESTIONS} questions simples de sim/não; as perguntas restantes podem ser
+solicitadas depois. Cada question deve testar uma
+única característica sustentada pelo perfil; não misture propriedades nem
+invente fatos. Escreva description do caso e dos suspeitos em português
+brasileiro. Em crime_moment, escreva um álibi/depoimento individual e
+plausível: o que o suspeito afirma que estava fazendo no momento do crime
+para se defender, em 1 ou 2 frases. Inclua, quando fizer sentido, horário
+aproximado, local, atividade, testemunha ou registro que sustente a versão.
+Varie as desculpas; não repita frases genéricas. Escreva clues e
+questions.text em português brasileiro. Preserve name, name_pt e IDs
+exatamente como recebidos; não traduza name. Evite nomes/identidades nas
+perguntas. Prefira características compartilhadas por vários suspeitos e
+divisões razoáveis; evite características exclusivas de um personagem.
+Antes de incluir cada question, avalie suas 10 respostas e conte true/false:
+aceite somente divisões 5/5, 4/6, 6/4, 3/7 ou 7/3; descarte 0/10, 1/9,
+2/8 e equivalentes. Não gere perguntas só para preencher a quantidade e não
+mostre esse raciocínio.
+Relacione em cada clue somente suspeitos justificáveis pelos dados fornecidos.
+Use exatamente os ids, names e name_pt recebidos, como inteiros. Em answers,
+suspect_id deve ser um desses IDs e answer deve ser booleano JSON true ou
+false, nunca texto.
+Retorne somente JSON válido, sem markdown ou explicação, com id, culprit_id,
+description, suspects, clues e questions. Use exatamente os 10 ids da lista:
+não omita, invente ou troque suspects. O formato interno obrigatório é:
+suspects=[{{id,name,name_pt,description,crime_moment}}],
+clues=[{{id,description,related_suspects}}],
+questions=[{{id,text,answers:[{{suspect_id,answer}}]}}]. Cada suspect precisa
+ter description e crime_moment; cada question precisa ter answers para os
+10 suspects.
 
-Crie um caso de investigação usando exclusivamente os personagens fornecidos.
-
-REGRAS:
-- Existem exatamente 5 suspeitos.
-- Exatamente 1 dos 5 suspeitos é o culpado.
-- Todos os suspeitos devem ser personagens fornecidos.
-- Cada suspeito deve possuir um crime_moment plausível.
-- Crie exatamente 3 pistas (clues).
-- Crie PELO MENOS {MIN_QUESTIONS} perguntas (questions) de sim/não — o ideal
-  é {N_QUESTIONS}, mas nunca menos que {MIN_QUESTIONS} — criadas
-  especificamente pra ESTE elenco de suspeitos (não use sempre as mesmas
-  perguntas — varie categoria: arma/poder, equipe, época de origem, local,
-  personalidade, história, o que fizer sentido pros personagens sorteados).
-- culprit_id deve corresponder ao id de um dos suspeitos.
-- Não invente personagens que não estejam na lista fornecida.
-- Retorne exclusivamente um JSON válido seguindo a estrutura fornecida.
-
-{SOLVABILITY_RULES}
-
-{JSON_PROMPT}
-
-PERSONAGENS:
-{characters_json}
+PERSONAGENS={characters_json}
 """
+
+
+def _build_additional_questions_prompt(
+    characters: list,
+    perguntas_aprovadas: list[Question],
+) -> str:
+    characters_json = json.dumps(
+        [_compact_character(c) for c in characters],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    perguntas_aprovadas_json = json.dumps(
+        [
+            {"id": pergunta.id, "text": pergunta.text}
+            for pergunta in perguntas_aprovadas
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    proximo_id = max((pergunta.id for pergunta in perguntas_aprovadas), default=0) + 1
+    exemplo_ids = [_to_dict(character)["id"] for character in characters[:2]]
+    return f"""
+Gere somente novas perguntas para o caso existente. Não gere um novo caso,
+id do caso, culprit_id, description, suspects ou clues. Retorne somente JSON
+válido neste formato: {{"questions":[{{"id":{proximo_id},"text":"O suspeito possui poderes elétricos?","answers":[{{"suspect_id":{exemplo_ids[0]},"answer":true}},{{"suspect_id":{exemplo_ids[1]},"answer":false}}]}}]}}.
+
+Gere exatamente {N_QUESTIONS} perguntas novas em português brasileiro. Cada
+elemento de questions é uma pergunta completa com id inteiro, text e answers.
+Cada pergunta deve conter exatamente uma resposta para cada um dos 10
+suspeitos. Use IDs de perguntas a partir de {proximo_id}, sem reutilizar IDs
+aprovados. Evite identidade direta, prefira características compartilhadas e
+divida razoavelmente os 10 suspeitos.
+Não repita nem seja semanticamente semelhante às perguntas aprovadas.
+Cada answer deve ser booleano JSON true ou false, nunca texto, e cada
+suspect_id deve ser um dos 10 IDs inteiros fornecidos.
+Não retorne respostas isoladas, strings em questions ou objetos com question
+no lugar de text. Não use "Sim", "Não", "true" ou "false" como strings.
+
+PERGUNTAS_APROVADAS={perguntas_aprovadas_json}
+PERSONAGENS={characters_json}
+"""
+
+_STOPWORDS = {
+    "a", "as", "o", "os", "um", "uma", "uns", "umas", "de", "do", "da",
+    "dos", "das", "e", "ou", "em", "no", "na", "nos", "nas", "por", "para",
+    "com", "sem", "que", "se", "é", "sao", "são", "tem", "possui", "pode",
+    "capaz", "capacidade", "algum", "alguma", "alguns", "algumas", "tipo",
+    "tipos", "suspeito", "suspeita",
+}
+
+
+def _normalizar_texto(texto: str) -> str:
+    sem_acentos = "".join(
+        caractere
+        for caractere in unicodedata.normalize("NFKD", texto.lower())
+        if not unicodedata.combining(caractere)
+    )
+    return re.sub(r"[^a-z0-9]+", " ", sem_acentos).strip()
+
+
+def _termos_significativos(texto: str) -> set[str]:
+    return {
+        termo for termo in _normalizar_texto(texto).split()
+        if termo not in _STOPWORDS and len(termo) >= 3
+    }
+
+
+def _menciona_identidade(texto: str, characters: list) -> bool:
+    """Impede que uma pergunta entregue um suspeito por nome/alter ego."""
+    normalizado = f" {_normalizar_texto(texto)} "
+    for character in characters:
+        dados = _to_dict(character)
+        for campo in ("name", "name_pt", "real_name"):
+            valor = dados.get(campo)
+            if valor:
+                identidade = _normalizar_texto(str(valor))
+                if identidade:
+                    if f" {identidade} " in normalizado:
+                        return True
+                    # Também bloqueia um nome civil/alias de uma palavra
+                    # quando o modelo omite o restante de uma identidade.
+                    partes = identidade.split()
+                    if any(
+                        len(parte) >= 4 and f" {parte} " in normalizado
+                        for parte in partes
+                    ):
+                        return True
+    return False
+
+
+def _sao_semelhantes(primeira: Question, segunda: Question) -> bool:
+    """Deduplicação simples e conservadora para perguntas."""
+    termos_a = _termos_significativos(primeira.text)
+    termos_b = _termos_significativos(segunda.text)
+    if not termos_a or not termos_b:
+        return _normalizar_texto(primeira.text) == _normalizar_texto(segunda.text)
+    intersecao = len(termos_a & termos_b)
+    uniao = len(termos_a | termos_b)
+    return intersecao / uniao >= 0.65 or termos_a <= termos_b or termos_b <= termos_a
+
+
+def _divisao_pergunta(pergunta: Question, total_suspeitos: int) -> tuple[int, int]:
+    verdadeiros = sum(answer.answer for answer in pergunta.answers)
+    return verdadeiros, total_suspeitos - verdadeiros
+
+
+def _selecionar_perguntas(candidatas: list[Question], total_suspeitos: int) -> list[Question]:
+    """Prioriza divisões equilibradas e rejeita perguntas individualizantes."""
+    prioritarias = [
+        pergunta for pergunta in candidatas
+        if sorted(_divisao_pergunta(pergunta, total_suspeitos)) in ([5, 5], [4, 6])
+    ]
+    reservas = [
+        pergunta for pergunta in candidatas
+        if sorted(_divisao_pergunta(pergunta, total_suspeitos)) == [3, 7]
+    ]
+
+    return (prioritarias + reservas)[:N_QUESTIONS]
+
+
+def _extrair_conteudo_resposta(response) -> str:
+    """Normaliza content string/list dos clientes compatíveis com OpenAI."""
+    message = getattr(response.choices[0], "message", None)
+    content = getattr(message, "content", None) if message is not None else None
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        partes: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                partes.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                partes.append(item["text"])
+            elif isinstance(getattr(item, "text", None), str):
+                partes.append(item.text)
+        return "".join(partes).strip()
+    return ""
+
+
+def _extrair_json(texto: str) -> str:
+    """Aceita JSON puro ou JSON envolvido em bloco markdown, sem relaxar schema."""
+    texto = texto.strip()
+    if texto.startswith("```"):
+        linhas = texto.splitlines()
+        if linhas and linhas[0].strip().startswith("```"):
+            linhas = linhas[1:]
+        if linhas and linhas[-1].strip() == "```":
+            linhas = linhas[:-1]
+        texto = "\n".join(linhas).strip()
+
+    # Alguns modelos devolvem quebras de linha/tabulações literais dentro de
+    # strings JSON. Removê-las como espaços permite o parse sem aceitar texto
+    # fora do objeto nem relaxar a validação Pydantic seguinte.
+    texto = "".join(caractere if ord(caractere) >= 32 else " " for caractere in texto)
+
+    try:
+        json.loads(texto)
+        return texto
+    except json.JSONDecodeError:
+        inicio = texto.find("{")
+        fim = texto.rfind("}")
+        if inicio < 0 or fim <= inicio:
+            raise ValueError("resposta não contém um objeto JSON")
+        candidato = texto[inicio:fim + 1]
+        json.loads(candidato)
+        return candidato
+
+
+def _erro_de_quota(erro: Exception) -> bool:
+    mensagem = str(erro).lower()
+    return (
+        "429" in mensagem
+        or "resource_exhausted" in mensagem
+        or "quota exceeded" in mensagem
+        or "quota_exceeded" in mensagem
+    )
+
+
+def _erro_transitorio(erro: Exception) -> bool:
+    mensagem = str(erro).lower()
+    return any(
+        marcador in mensagem
+        for marcador in ("503", "temporarily unavailable", "timeout", "timed out")
+    )
+
+
+def _resumo_erro(erro: Exception) -> str:
+    if _erro_de_quota(erro):
+        return "quota do provider excedida"
+    mensagem = " ".join(str(erro).split())
+    for segredo in (GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY):
+        if segredo:
+            mensagem = mensagem.replace(segredo, "[redacted]")
+    if len(mensagem) > 240:
+        mensagem = mensagem[:237] + "..."
+    return mensagem or erro.__class__.__name__
+
+
+def _pergunta_composta(texto: str) -> bool:
+    normalizado = _normalizar_texto(texto)
+    if re.search(r"\bnem\b", normalizado) or "/" in texto or ";" in texto:
+        return True
+    if re.search(r"\b(ou|or)\b", normalizado):
+        # Permite a especificação natural "artificial ou sintética", mas
+        # rejeita alternativas independentes na mesma pergunta.
+        sinonimos_naturais = (
+            "artificial" in normalizado
+            and bool(re.search(r"\b(sintetica|sintetico|synthetic)\b", normalizado))
+        )
+        return not sinonimos_naturais
+    return False
 
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -206,25 +306,67 @@ openrouter_client = AsyncOpenAI(
 )
 
 
-def _validar_e_reparar(case: InvestigationCase) -> InvestigationCase:
+def _validar_e_reparar(
+    case: InvestigationCase,
+    characters: list,
+    exigir_minimo: bool = True,
+    diagnostico: dict[str, int] | None = None,
+) -> InvestigationCase:
     """Rede de segurança: valida clues/culpado (isso sim invalida o caso
     inteiro, é estrutural) e FILTRA perguntas individualmente defeituosas
     (suspeito faltando, pergunta que não divide ninguém) em vez de jogar
     fora o caso todo por causa de 1 pergunta ruim entre 12 — a IA erra uma
     pergunta ocasional bem mais que erra o caso inteiro, então vale
     aproveitar o resto."""
+    controlled_by_id = {character["id"]: character for character in MARVEL_CHARACTERS}
+    character_data = [_to_dict(character) for character in characters]
+    controlled_ids = {character.get("id") for character in character_data}
+    if len(character_data) != N_SUSPECTS or len(controlled_ids) != N_SUSPECTS:
+        raise ValueError(f"O elenco recebido precisa ter exatamente {N_SUSPECTS} personagens distintos.")
+    if not controlled_ids <= set(controlled_by_id):
+        raise ValueError("O elenco contém personagem fora da lista controlada.")
+
     suspeitos_ids = {s.id for s in case.suspects}
+    if len(case.suspects) != N_SUSPECTS or suspeitos_ids != controlled_ids:
+        raise ValueError("O caso não contém exatamente os 10 personagens controlados recebidos.")
 
-    clues_do_culpado = [c for c in case.clues if case.culprit_id in c.related_suspects]
-    if not clues_do_culpado:
-        raise ValueError("Caso gerado sem nenhuma clue apontando pro culprit_id — não solucionável.")
+    # Identidade e nomes vêm sempre do catálogo; a IA só produz o conteúdo
+    # narrativo. Isso impede IDs, nomes ou traduções inventados no JSON final.
+    suspeitos_canonicos = [
+        suspeito.model_copy(update={
+            "name": controlled_by_id[suspeito.id]["name"],
+            "name_pt": controlled_by_id[suspeito.id]["name_pt"],
+        })
+        for suspeito in case.suspects
+    ]
+    case = case.model_copy(update={"suspects": suspeitos_canonicos})
+    if case.culprit_id not in suspeitos_ids:
+        raise ValueError("culprit_id não pertence aos 10 suspeitos controlados.")
 
-    suspeitos_com_clue = {sid for c in case.clues for sid in c.related_suspects}
-    sem_clue = suspeitos_ids - suspeitos_com_clue
-    if sem_clue:
-        raise ValueError(f"Suspeitos sem nenhuma clue relacionada: {sem_clue} — dedução incompleta.")
+    for clue in case.clues:
+        descricao_normalizada = _normalizar_texto(clue.description)
+        if (
+            not clue.description.strip()
+            or not clue.related_suspects
+            or len(clue.related_suspects) != len(set(clue.related_suspects))
+            or not set(clue.related_suspects) <= suspeitos_ids
+            or any(
+                marcador in descricao_normalizada
+                for marcador in (
+                    "all suspects have an official name listed",
+                    "todos os suspeitos tem um nome oficial listado",
+                )
+            )
+        ):
+            raise ValueError("Clue vazia, genérica ou com relacionados inválidos.")
+
+    if diagnostico is not None:
+        diagnostico["geradas"] = len(case.questions)
 
     perguntas_boas: list[Question] = []
+    rejeitadas_divisao = 0
+    duplicadas = 0
+    perguntas_estruturais: list[Question] = []
     for q in case.questions:
         vistos: set[int] = set()
         respostas_limpas = []
@@ -237,116 +379,379 @@ def _validar_e_reparar(case: InvestigationCase) -> InvestigationCase:
             continue  # suspeito faltando/duplicado — descarta só ESSA pergunta
 
         if len({a.answer for a in respostas_limpas}) < 2:
+            rejeitadas_divisao += 1
             continue  # não divide ninguém (todos true/false) — inútil, descarta só ela
 
-        perguntas_boas.append(Question(id=q.id, text=q.text, answers=respostas_limpas))
+        pergunta_limpa = Question(id=q.id, text=q.text.strip(), answers=respostas_limpas)
+        if pergunta_limpa.text:
+            perguntas_estruturais.append(pergunta_limpa)
+        if (
+            not pergunta_limpa.text
+            or _pergunta_composta(pergunta_limpa.text)
+            or _menciona_identidade(pergunta_limpa.text, characters)
+        ):
+            continue  # texto vazio ou identidade explícita
+        if any(_sao_semelhantes(pergunta_limpa, anterior) for anterior in perguntas_boas):
+            duplicadas += 1
+            continue  # não desperdiçar slots com a mesma característica
+        perguntas_boas.append(pergunta_limpa)
 
-    if len(perguntas_boas) < MIN_QUESTIONS:
+    candidatas_balanceadas = len(perguntas_boas)
+    perguntas_boas = _selecionar_perguntas(perguntas_boas, len(suspeitos_ids))
+    rejeitadas_divisao += max(0, candidatas_balanceadas - len(perguntas_boas))
+
+    # Se o modelo criou perguntas com respostas completas, mas o filtro de
+    # qualidade eliminou todas, reaproveita a estrutura antes de abandonar o
+    # provider. A seleção ainda remove perguntas constantes e prioriza as
+    # divisões equilibradas.
+    if exigir_minimo and len(perguntas_boas) < MIN_QUESTIONS:
+        perguntas_estruturais_unicas: list[Question] = []
+        for pergunta in perguntas_estruturais:
+            if any(_sao_semelhantes(pergunta, anterior) for anterior in perguntas_estruturais_unicas):
+                continue
+            perguntas_estruturais_unicas.append(pergunta)
+        perguntas_boas = _selecionar_perguntas(
+            perguntas_estruturais_unicas,
+            len(suspeitos_ids),
+        )
+
+    if exigir_minimo and len(perguntas_boas) < MIN_QUESTIONS:
         raise ValueError(f"Só sobraram {len(perguntas_boas)} perguntas boas depois de filtrar defeituosas, precisa de pelo menos {MIN_QUESTIONS}.")
 
-    padroes_por_suspeito: dict[int, tuple] = {sid: () for sid in suspeitos_ids}
-    for q in perguntas_boas:
-        respostas_por_id = {a.suspect_id: a.answer for a in q.answers}
-        for sid in suspeitos_ids:
-            padroes_por_suspeito[sid] += (respostas_por_id[sid],)
-
-    if len(set(padroes_por_suspeito.values())) < len(padroes_por_suspeito):
-        raise ValueError("Dois suspeitos têm o mesmo padrão de respostas em todas as perguntas — não dá pra distinguir.")
+    if diagnostico is not None:
+        diagnostico["aprovadas"] = len(perguntas_boas)
+        diagnostico["rejeitadas_divisao"] = rejeitadas_divisao
+        diagnostico["duplicadas"] = duplicadas
 
     return case.model_copy(update={"questions": perguntas_boas})
 
 
-async def _com_retry(gerar, characters: list, tentativas: int = 3) -> InvestigationCase:
-    """Regenera até `tentativas` vezes no MESMO provedor antes de desistir —
-    uma falha de validação é sobre o conteúdo gerado (estocástico), não
-    sobre o provedor estar fora do ar, então vale tentar de novo primeiro."""
+def _acumular_perguntas(
+    acumuladas: list[Question],
+    novas: list[Question],
+    diagnostico: dict[str, int] | None = None,
+) -> list[Question]:
+    resultado = list(acumuladas)
+    ids_existentes = {pergunta.id for pergunta in resultado}
+    duplicadas = 0
+    for pergunta in novas:
+        if len(resultado) >= N_QUESTIONS:
+            break
+        if pergunta.id in ids_existentes:
+            duplicadas += 1
+            continue
+        if any(_sao_semelhantes(pergunta, anterior) for anterior in resultado):
+            duplicadas += 1
+            continue
+        resultado.append(pergunta)
+        ids_existentes.add(pergunta.id)
+    if diagnostico is not None:
+        diagnostico["duplicadas"] = diagnostico.get("duplicadas", 0) + duplicadas
+    return resultado
+
+
+async def _com_retry(
+    gerar_caso,
+    gerar_adicionais,
+    characters: list,
+    tentativas: int = 3,
+    provider: str = "Provider",
+) -> InvestigationCase:
+    """Gera o caso uma vez e complementa somente as perguntas aprovadas."""
     ultimo_erro: Exception | None = None
-    for _ in range(tentativas):
+    caso_base: InvestigationCase | None = None
+    perguntas_aprovadas: list[Question] = []
+    rodadas_executadas = 0
+    for tentativa in range(tentativas):
+        rodadas_executadas += 1
+        rodada = tentativa + 1
+        complementar = caso_base is not None
+        diagnostico: dict[str, int] = {}
         try:
-            case = await gerar(characters)
-            return _validar_e_reparar(case)
+            if complementar:
+                print(
+                    f"[QUESTIONS] Provider={provider} | "
+                    f"Iniciando rodada complementar={rodada} | "
+                    f"Acumuladas antes={len(perguntas_aprovadas)} | "
+                    f"Necessárias={max(0, MIN_QUESTIONS - len(perguntas_aprovadas))}"
+                )
+
+            if not complementar:
+                case = await gerar_caso(characters)
+                parcial = _validar_e_reparar(
+                    case,
+                    characters,
+                    exigir_minimo=False,
+                    diagnostico=diagnostico,
+                )
+                caso_base = parcial
+            else:
+                adicionais = await gerar_adicionais(characters, perguntas_aprovadas)
+                print(
+                    f"[QUESTIONS] Provider={provider} | Rodada={rodada} | "
+                    f"Perguntas complementares recebidas={len(adicionais.questions)}"
+                )
+                parcial = _validar_e_reparar(
+                    caso_base.model_copy(update={"questions": adicionais.questions}),
+                    characters,
+                    exigir_minimo=False,
+                    diagnostico=diagnostico,
+                )
+
+            perguntas_aprovadas = _acumular_perguntas(
+                perguntas_aprovadas,
+                parcial.questions,
+                diagnostico,
+            )
+
+            if diagnostico.get("rejeitadas_divisao", 0):
+                print(
+                    f"[QUESTIONS] Provider={provider} | Rodada={rodada} | "
+                    f"Rejeitadas por divisão={diagnostico['rejeitadas_divisao']}"
+                )
+            if diagnostico.get("duplicadas", 0):
+                print(
+                    f"[QUESTIONS] Provider={provider} | Rodada={rodada} | "
+                    f"Duplicadas descartadas={diagnostico['duplicadas']}"
+                )
+
+            if complementar:
+                print(
+                    f"[QUESTIONS] Provider={provider} | Rodada={rodada} | "
+                    f"Complementares aprovadas={len(parcial.questions)}"
+                )
+                print(
+                    f"[QUESTIONS] Provider={provider} | Rodada={rodada} | "
+                    f"Total acumulado={len(perguntas_aprovadas)}"
+                )
+            else:
+                print(
+                    f"[QUESTIONS] Provider={provider} | Geração principal | Rodada=1 | "
+                    f"Geradas={diagnostico.get('geradas', len(case.questions))} | "
+                    f"Aprovadas={len(parcial.questions)} | "
+                    f"Acumuladas={len(perguntas_aprovadas)}"
+                )
+
+            if len(perguntas_aprovadas) >= MIN_QUESTIONS:
+                print(
+                    f"[QUESTIONS] Provider={provider} | Mínimo atingido | "
+                    f"Total={len(perguntas_aprovadas)} | Rodadas={rodadas_executadas}"
+                )
+                return caso_base.model_copy(
+                    update={"questions": perguntas_aprovadas[:N_QUESTIONS]}
+                )
         except Exception as erro:
             ultimo_erro = erro
-    raise ultimo_erro
+            if _erro_de_quota(erro):
+                break
+            if complementar:
+                # JSON/schema inválido na rodada complementar pode ser
+                # tentado novamente; erros definitivos do provider não.
+                pode_tentar_novamente = _erro_transitorio(erro) or isinstance(erro, ValueError)
+            else:
+                # A geração inicial só repete falhas transitórias.
+                pode_tentar_novamente = _erro_transitorio(erro)
+            if not pode_tentar_novamente:
+                break
+            if tentativa + 1 < tentativas:
+                print(f"Tentativa {tentativa + 1} falhou: {_resumo_erro(erro)}")
+    if ultimo_erro is not None:
+        print(
+            f"[QUESTIONS] Provider={provider} | Falhou | "
+            f"Total acumulado={len(perguntas_aprovadas)} | Rodadas={rodadas_executadas}"
+        )
+        raise ultimo_erro
+    print(
+        f"[QUESTIONS] Provider={provider} | Falhou | "
+        f"Total acumulado={len(perguntas_aprovadas)} | Rodadas={rodadas_executadas}"
+    )
+    raise ValueError(
+        f"Provider gerou apenas {len(perguntas_aprovadas)} perguntas válidas; "
+        f"são necessárias pelo menos {MIN_QUESTIONS}."
+    )
 
 
 async def _gerar_gemini(characters: list) -> InvestigationCase:
-    response = await gemini_client.aio.models.generate_content(
+    chat = gemini_client.aio.chats.create(
         model=GEMINI_MODEL,
-        contents=_build_prompt(characters),
         config={
             "response_mime_type": "application/json",
             "response_schema": InvestigationCase,
+            "max_output_tokens": 6144,
         },
     )
+    response = await chat.send_message(_build_prompt(characters))
     return InvestigationCase.model_validate_json(response.text)
+
+
+async def _gerar_gemini_adicionais(
+    characters: list,
+    perguntas_aprovadas: list[Question],
+) -> AdditionalQuestions:
+    chat = gemini_client.aio.chats.create(
+        model=GEMINI_MODEL,
+        config={
+            "response_mime_type": "application/json",
+            "response_schema": AdditionalQuestions,
+            "max_output_tokens": 6144,
+        },
+    )
+    response = await chat.send_message(
+        _build_additional_questions_prompt(characters, perguntas_aprovadas)
+    )
+    return AdditionalQuestions.model_validate_json(response.text)
 
 
 async def _gerar_groq(characters: list) -> InvestigationCase:
     response = await groq_client.chat.completions.create(
         model=GROQ_MODEL,
         messages=[{"role": "user", "content": _build_prompt(characters)}],
+        # JSON mode evita texto livre; o prompt abaixo reforça todos os campos
+        # porque este modelo/provedor não recebe o schema Pydantic diretamente.
         response_format={"type": "json_object"},
-        max_tokens=4096,  # sem isso, o JSON pode ser cortado no meio (12 perguntas x 5 respostas + suspeitos + pistas é payload grande)
+        max_tokens=6144,
     )
-    content = response.choices[0].message.content
+    content = _extrair_conteudo_resposta(response)
     if not content:
         raise RuntimeError("Groq não retornou conteúdo.")
-    return InvestigationCase.model_validate_json(content)
+    return InvestigationCase.model_validate_json(_extrair_json(content))
+
+
+async def _gerar_groq_adicionais(
+    characters: list,
+    perguntas_aprovadas: list[Question],
+) -> AdditionalQuestions:
+    response = await groq_client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{
+            "role": "user",
+            "content": _build_additional_questions_prompt(characters, perguntas_aprovadas),
+        }],
+        response_format={"type": "json_object"},
+        max_tokens=6144,
+    )
+    content = _extrair_conteudo_resposta(response)
+    if not content:
+        raise RuntimeError("Groq não retornou perguntas adicionais.")
+    return AdditionalQuestions.model_validate_json(_extrair_json(content))
 
 
 async def _gerar_openrouter(characters: list) -> InvestigationCase:
     response = await openrouter_client.chat.completions.create(
         model=OPENROUTER_MODEL,
         messages=[{"role": "user", "content": _build_prompt(characters)}],
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "investigation_case",
-                "strict": True,
-                "schema": InvestigationCase.model_json_schema(),
-            },
-        },
-        max_tokens=8192,
+        # O modelo gratuito nem sempre respeita json_schema estrito; JSON
+        # mode é mais compatível e a validação Pydantic continua obrigatória.
+        response_format={"type": "json_object"},
+        max_tokens=6144,
     )
 
-    content = response.choices[0].message.content
+    content = _extrair_conteudo_resposta(response)
 
     if not content:
         raise RuntimeError("OpenRouter não retornou conteúdo.")
 
-    return InvestigationCase.model_validate_json(content)
+    return InvestigationCase.model_validate_json(_extrair_json(content))
 
 
-def _caso_fallback_estatico() -> InvestigationCase:
+async def _gerar_openrouter_adicionais(
+    characters: list,
+    perguntas_aprovadas: list[Question],
+) -> AdditionalQuestions:
+    response = await openrouter_client.chat.completions.create(
+        model=OPENROUTER_MODEL,
+        messages=[{
+            "role": "user",
+            "content": _build_additional_questions_prompt(characters, perguntas_aprovadas),
+        }],
+        response_format={"type": "json_object"},
+        max_tokens=6144,
+    )
+    content = _extrair_conteudo_resposta(response)
+    if not content:
+        raise RuntimeError("OpenRouter não retornou perguntas adicionais.")
+    return AdditionalQuestions.model_validate_json(_extrair_json(content))
+
+
+def _caso_fallback_estatico(characters: list | None = None) -> InvestigationCase:
     """Última rede de segurança: se Gemini, Groq E OpenRouter falharem
     juntos (rate limit, fora do ar, o que for), o jogo continua jogável
     com este caso fixo em vez de dar 500 pro jogador."""
+    catalog_by_id = {character["id"]: character for character in MARVEL_CHARACTERS}
+    received = [_to_dict(character) for character in (characters or [])]
+    catalog = [catalog_by_id[item["id"]] for item in received if item.get("id") in catalog_by_id]
+    if len(catalog) != N_SUSPECTS or len({character["id"] for character in catalog}) != N_SUSPECTS:
+        catalog = MARVEL_CHARACTERS[:N_SUSPECTS]
+        received = []
+    received_by_id = {item["id"]: item for item in received}
+    ids = [character["id"] for character in catalog]
+    alibis = [
+        "revisando o painel de segurança na sala de controle; o registro de acesso confirma sua entrada às 20h50",
+        "conversando com convidados no salão principal; duas testemunhas dizem ter falado com essa pessoa às 21h10",
+        "checando o gerador no subsolo; um técnico afirma tê-la visto sair às 21h05",
+        "organizando equipamentos na oficina; uma câmera interna registra movimentação entre 20h55 e 21h20",
+        "em uma ligação privada na varanda leste; o histórico do comunicador marca atividade contínua às 21h12",
+        "acompanhando a equipe médica na ala norte; a chefe da equipe confirma sua presença durante o blecaute",
+        "fazendo uma ronda no estacionamento; o leitor externo registra sua credencial às 21h08",
+        "na cozinha, ajudando a preparar o serviço; funcionários relatam que permaneceu ali até 21h15",
+        "consultando os mapas do prédio na biblioteca; o terminal foi acessado em seu nome às 21h11",
+        "descansando no quarto de hóspedes após uma reunião; uma chamada registrada mostra que estava no local às 21h14",
+    ]
+    suspects = [
+        {
+            "id": character["id"],
+            "name": character["name"],
+            "name_pt": character["name_pt"],
+            "description": (
+                str(received_by_id.get(character["id"], {}).get("deck") or "")[:300]
+                or f"{character['name_pt']} é um personagem da lista controlada do caso."
+            ),
+            "crime_moment": (
+                f"{character['name_pt']} afirma que estava {alibis[index]}."
+            ),
+        }
+        for index, character in enumerate(catalog)
+    ]
+    true_sets = [
+        {0, 1, 2, 3, 4},
+        {0, 1, 2, 5, 6},
+        {0, 1, 3, 5, 7},
+        {0, 2, 3, 5, 8},
+        {0, 2, 4, 6, 9},
+        {1, 3, 4, 7, 8},
+        {2, 4, 6, 8, 9},
+        {0, 1, 5, 7, 9},
+        {0, 2, 4, 7, 8},
+        {1, 2, 6, 8, 9},
+    ]
+    question_texts = [
+        "O suspeito tinha acesso ao perímetro interno da base?",
+        "O suspeito foi visto circulando antes do blecaute?",
+        "O suspeito possui treinamento útil para uma operação de segurança?",
+        "O suspeito teve contato com a equipe de vigilância no evento?",
+        "O suspeito conhecia algum procedimento técnico do local?",
+        "O suspeito permaneceu nas dependências durante o apagão?",
+        "O suspeito tinha um motivo plausível para estar no setor restrito?",
+        "O suspeito conhecia a rotina de patrulha do local?",
+        "O suspeito tinha uma justificativa registrada para acessar a área?",
+        "O suspeito esteve perto do cofre antes do desaparecimento?",
+    ]
     payload = {
         "id": 0,
-        "culprit_id": 1,
+        "culprit_id": ids[0],
         "description": "Um artefato desapareceu do cofre da base durante um blecaute breve.",
-        "suspects": [
-            {"id": 1, "name": "Suspeito A", "description": "Presente no evento.", "crime_moment": "Alega ter ficado sozinho na sala de controle no horário do apagão."},
-            {"id": 2, "name": "Suspeito B", "description": "Presente no evento.", "crime_moment": "Diz que estava acompanhado por testemunhas o tempo todo."},
-            {"id": 3, "name": "Suspeito C", "description": "Presente no evento.", "crime_moment": "Afirma ter chegado depois do horário do roubo."},
-            {"id": 4, "name": "Suspeito D", "description": "Presente no evento.", "crime_moment": "Relata ter saído do local antes do apagão."},
-            {"id": 5, "name": "Suspeito E", "description": "Presente no evento.", "crime_moment": "Conta que estava monitorando as câmeras externas."},
-        ],
+        "suspects": suspects,
         "clues": [
-            {"id": 1, "description": "O painel elétrico foi desligado manualmente, exigindo acesso restrito.", "related_suspects": [1]},
-            {"id": 2, "description": "Câmeras externas não registraram nada de anormal.", "related_suspects": [5]},
-            {"id": 3, "description": "Uma testemunha confirma a presença constante do Suspeito B ao seu lado.", "related_suspects": [2]},
+            {"id": 1, "description": "O painel do cofre foi desligado durante uma janela curta de acesso restrito.", "related_suspects": [ids[0], ids[1], ids[2], ids[3], ids[4]]},
+            {"id": 2, "description": "O registro de entrada mostra movimentação em dois corredores durante o blecaute.", "related_suspects": [ids[0], ids[5], ids[6], ids[7]]},
+            {"id": 3, "description": "Uma testemunha confirmou que parte da equipe permaneceu no salão principal.", "related_suspects": [ids[0], ids[8], ids[9]]},
         ],
         "questions": [
-            {"id": i, "text": t, "answers": [{"suspect_id": sid, "answer": a} for sid, a in zip([1, 2, 3, 4, 5], vals)]}
-            for i, (t, vals) in enumerate([
-                ("O suspeito tinha acesso à sala de controle?", [True, False, False, False, False]),
-                ("O suspeito foi visto por alguma testemunha no horário do crime?", [False, True, False, True, True]),
-                ("O suspeito chegou ao local antes do apagão?", [True, True, False, True, True]),
-                ("O suspeito permaneceu no local depois do apagão?", [True, True, True, False, True]),
-                ("O suspeito tem algum vínculo direto com o sistema elétrico do prédio?", [True, False, False, False, True]),
-            ], start=1)
+            {"id": index, "text": text, "answers": [
+                {"suspect_id": suspect_id, "answer": position in true_set}
+                for position, suspect_id in enumerate(ids)
+            ]}
+            for index, (text, true_set) in enumerate(zip(question_texts, true_sets), start=1)
         ],
     }
     return InvestigationCase.model_validate(payload)
@@ -354,19 +759,37 @@ def _caso_fallback_estatico() -> InvestigationCase:
 
 async def generate_case(characters: list[dict]) -> InvestigationCase:
     try:
-        return await _com_retry(_gerar_gemini, characters, tentativas=3)
+        return await _com_retry(
+            _gerar_gemini,
+            _gerar_gemini_adicionais,
+            characters,
+            tentativas=3,
+            provider="Gemini",
+        )
     except Exception as gemini_error:
-        print(f"Gemini falhou, erro: {gemini_error}")
+        print(f"Gemini falhou: {_resumo_erro(gemini_error)}")
+        print("Tentando Groq...")
 
     try:
-        return await _com_retry(_gerar_groq, characters)
+        return await _com_retry(
+            _gerar_groq,
+            _gerar_groq_adicionais,
+            characters,
+            provider="Groq",
+        )
     except Exception as groq_error:
-        print(f"Groq falhou, erro: {groq_error}")
+        print(f"Groq falhou: {_resumo_erro(groq_error)}")
+        print("Tentando OpenRouter...")
 
     try:
-        return await _com_retry(_gerar_openrouter, characters)
+        return await _com_retry(
+            _gerar_openrouter,
+            _gerar_openrouter_adicionais,
+            characters,
+            provider="OpenRouter",
+        )
     except Exception as openrouter_error:
-        print(f"OpenRouter falhou, erro: {openrouter_error}")
+        print(f"OpenRouter falhou: {_resumo_erro(openrouter_error)}")
 
-    print("Todos os provedores de IA falharam — usando caso fallback estático.")
-    return _caso_fallback_estatico()
+    print("Todos os provedores de IA falharam. Usando caso fallback estático.")
+    return _caso_fallback_estatico(characters)
