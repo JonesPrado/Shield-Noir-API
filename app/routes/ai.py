@@ -1,4 +1,5 @@
 import json
+import random
 import re
 import unicodedata
 
@@ -45,7 +46,7 @@ def _compact_character(character) -> dict:
     }
 
 
-def _build_prompt(characters: list) -> str:
+def _build_prompt(characters: list, culprit_id: int) -> str:
     characters_json = json.dumps(
         [_compact_character(c) for c in characters],
         ensure_ascii=False,
@@ -53,7 +54,9 @@ def _build_prompt(characters: list) -> str:
     )
     return f"""
 Crie um caso Shield Noir usando exclusivamente estes 10 personagens.
-Escolha 1 culpado entre eles. Gere 3 clues curtas e exatamente
+O backend já sorteou o culpado: use exatamente culprit_id={culprit_id}.
+Qualquer um dos 10 personagens pode ser o culpado, independentemente de ser
+herói, vilão ou anti-herói; não escolha outro ID. Gere 3 clues curtas e exatamente
 {QUESTIONS_PER_CALL} questions simples de sim/não; as perguntas restantes
 serão solicitadas depois. Cada question deve testar uma
 única característica sustentada pelo perfil; não misture propriedades nem
@@ -231,7 +234,10 @@ def _selecionar_perguntas(candidatas: list[Question], total_suspeitos: int) -> l
 
 def _extrair_conteudo_resposta(response) -> str:
     """Normaliza content string/list dos clientes compatíveis com OpenAI."""
-    message = getattr(response.choices[0], "message", None)
+    choices = getattr(response, "choices", None) or []
+    if not choices:
+        return ""
+    message = getattr(choices[0], "message", None)
     content = getattr(message, "content", None) if message is not None else None
     if isinstance(content, str):
         return content.strip()
@@ -295,6 +301,11 @@ def _erro_transitorio(erro: Exception) -> bool:
     )
 
 
+def _erro_sem_conteudo(erro: Exception) -> bool:
+    mensagem = str(erro).lower()
+    return "não retornou conteúdo" in mensagem or "nao retornou conteudo" in mensagem
+
+
 def _resumo_erro(erro: Exception) -> str:
     if _erro_de_quota(erro):
         return "quota do provider excedida"
@@ -330,11 +341,34 @@ openrouter_client = AsyncOpenAI(
 )
 
 
+async def _chamar_openrouter(mensagens: list[dict]):
+    """Lida com modelos gratuitos que alternam entre exigir raciocínio ou não."""
+    async def solicitar(reasoning_effort: str):
+        return await openrouter_client.chat.completions.create(
+            model=OPENROUTER_MODEL,
+            messages=mensagens,
+            reasoning_effort=reasoning_effort,
+            max_tokens=6144,
+        )
+
+    try:
+        response = await solicitar("none")
+    except Exception as erro:
+        if "reasoning is mandatory" not in str(erro).lower():
+            raise
+        return await solicitar("low")
+
+    if _extrair_conteudo_resposta(response):
+        return response
+    return await solicitar("low")
+
+
 def _validar_e_reparar(
     case: InvestigationCase,
     characters: list,
     exigir_minimo: bool = True,
     diagnostico: dict[str, int] | None = None,
+    expected_culprit_id: int | None = None,
 ) -> InvestigationCase:
     """Rede de segurança: valida clues/culpado (isso sim invalida o caso
     inteiro, é estrutural) e FILTRA perguntas individualmente defeituosas
@@ -368,6 +402,10 @@ def _validar_e_reparar(
     case = case.model_copy(update={"suspects": suspeitos_canonicos})
     if case.culprit_id not in suspeitos_ids:
         raise ValueError("culprit_id não pertence aos 10 suspeitos controlados.")
+    if expected_culprit_id is not None and case.culprit_id != expected_culprit_id:
+        raise ValueError(
+            "O provider alterou o culpado sorteado pelo backend."
+        )
 
     for clue in case.clues:
         descricao_normalizada = _normalizar_texto(clue.description)
@@ -480,6 +518,7 @@ async def _com_retry(
     gerar_caso,
     gerar_adicionais,
     characters: list,
+    culprit_id: int,
     tentativas: int = 3,
     provider: str = "Provider",
 ) -> InvestigationCase:
@@ -503,7 +542,7 @@ async def _com_retry(
                 )
 
             if not complementar:
-                case = await gerar_caso(characters)
+                case = await gerar_caso(characters, culprit_id)
                 case = case.model_copy(
                     update={"questions": case.questions[:QUESTIONS_PER_CALL]}
                 )
@@ -512,6 +551,7 @@ async def _com_retry(
                     characters,
                     exigir_minimo=False,
                     diagnostico=diagnostico,
+                    expected_culprit_id=culprit_id,
                 )
                 caso_base = parcial
             else:
@@ -530,6 +570,7 @@ async def _com_retry(
                     characters,
                     exigir_minimo=False,
                     diagnostico=diagnostico,
+                    expected_culprit_id=culprit_id,
                 )
 
             perguntas_aprovadas = _acumular_perguntas(
@@ -584,7 +625,11 @@ async def _com_retry(
                 pode_tentar_novamente = _erro_transitorio(erro) or isinstance(erro, ValueError)
             else:
                 # A geração inicial só repete falhas transitórias.
-                pode_tentar_novamente = _erro_transitorio(erro)
+                pode_tentar_novamente = (
+                    _erro_transitorio(erro)
+                    or _erro_sem_conteudo(erro)
+                    or (provider == "OpenRouter" and isinstance(erro, ValueError))
+                )
             if not pode_tentar_novamente:
                 break
             if tentativa + 1 < tentativas:
@@ -605,7 +650,7 @@ async def _com_retry(
     )
 
 
-async def _gerar_gemini(characters: list) -> InvestigationCase:
+async def _gerar_gemini(characters: list, culprit_id: int) -> InvestigationCase:
     chat = gemini_client.aio.chats.create(
         model=GEMINI_MODEL,
         config={
@@ -614,7 +659,7 @@ async def _gerar_gemini(characters: list) -> InvestigationCase:
             "max_output_tokens": 6144,
         },
     )
-    response = await chat.send_message(_build_prompt(characters))
+    response = await chat.send_message(_build_prompt(characters, culprit_id))
     return InvestigationCase.model_validate_json(response.text)
 
 
@@ -636,10 +681,10 @@ async def _gerar_gemini_adicionais(
     return AdditionalQuestions.model_validate_json(response.text)
 
 
-async def _gerar_groq(characters: list) -> InvestigationCase:
+async def _gerar_groq(characters: list, culprit_id: int) -> InvestigationCase:
     response = await groq_client.chat.completions.create(
         model=GROQ_MODEL,
-        messages=[{"role": "user", "content": _build_prompt(characters)}],
+        messages=[{"role": "user", "content": _build_prompt(characters, culprit_id)}],
         reasoning_effort="low",
         max_tokens=6144,
     )
@@ -668,12 +713,9 @@ async def _gerar_groq_adicionais(
     return AdditionalQuestions.model_validate_json(_extrair_json(content))
 
 
-async def _gerar_openrouter(characters: list) -> InvestigationCase:
-    response = await openrouter_client.chat.completions.create(
-        model=OPENROUTER_MODEL,
-        messages=[{"role": "user", "content": _build_prompt(characters)}],
-        reasoning_effort="low",
-        max_tokens=6144,
+async def _gerar_openrouter(characters: list, culprit_id: int) -> InvestigationCase:
+    response = await _chamar_openrouter(
+        [{"role": "user", "content": _build_prompt(characters, culprit_id)}]
     )
 
     content = _extrair_conteudo_resposta(response)
@@ -688,14 +730,11 @@ async def _gerar_openrouter_adicionais(
     characters: list,
     perguntas_aprovadas: list[Question],
 ) -> AdditionalQuestions:
-    response = await openrouter_client.chat.completions.create(
-        model=OPENROUTER_MODEL,
-        messages=[{
+    response = await _chamar_openrouter(
+        [{
             "role": "user",
             "content": _build_additional_questions_prompt(characters, perguntas_aprovadas),
-        }],
-        reasoning_effort="low",
-        max_tokens=6144,
+        }]
     )
     content = _extrair_conteudo_resposta(response)
     if not content:
@@ -703,7 +742,10 @@ async def _gerar_openrouter_adicionais(
     return AdditionalQuestions.model_validate_json(_extrair_json(content))
 
 
-def _caso_fallback_estatico(characters: list | None = None) -> InvestigationCase:
+def _caso_fallback_estatico(
+    characters: list | None = None,
+    culprit_id: int | None = None,
+) -> InvestigationCase:
     """Última rede de segurança: se Gemini, Groq E OpenRouter falharem
     juntos (rate limit, fora do ar, o que for), o jogo continua jogável
     com este caso fixo em vez de dar 500 pro jogador."""
@@ -715,6 +757,7 @@ def _caso_fallback_estatico(characters: list | None = None) -> InvestigationCase
         received = []
     received_by_id = {item["id"]: item for item in received}
     ids = [character["id"] for character in catalog]
+    fallback_culprit_id = culprit_id if culprit_id in ids else random.choice(ids)
     alibis = [
         "revisando o painel de segurança na sala de controle; o registro de acesso confirma sua entrada às 20h50",
         "conversando com convidados no salão principal; duas testemunhas dizem ter falado com essa pessoa às 21h10",
@@ -769,7 +812,7 @@ def _caso_fallback_estatico(characters: list | None = None) -> InvestigationCase
     ]
     payload = {
         "id": 0,
-        "culprit_id": ids[0],
+        "culprit_id": fallback_culprit_id,
         "description": "Um artefato desapareceu do cofre da base durante um blecaute breve.",
         "suspects": suspects,
         "clues": [
@@ -789,11 +832,17 @@ def _caso_fallback_estatico(characters: list | None = None) -> InvestigationCase
 
 
 async def generate_case(characters: list[dict]) -> InvestigationCase:
+    character_ids = [_to_dict(character).get("id") for character in characters]
+    if len(character_ids) != N_SUSPECTS or len(set(character_ids)) != N_SUSPECTS:
+        raise ValueError(f"O elenco recebido precisa ter exatamente {N_SUSPECTS} personagens distintos.")
+    culprit_id = random.choice(character_ids)
+
     try:
         return await _com_retry(
             _gerar_gemini,
             _gerar_gemini_adicionais,
             characters,
+            culprit_id,
             tentativas=3,
             provider="Gemini",
         )
@@ -806,6 +855,7 @@ async def generate_case(characters: list[dict]) -> InvestigationCase:
             _gerar_groq,
             _gerar_groq_adicionais,
             characters,
+            culprit_id,
             tentativas=4,
             provider="Groq",
         )
@@ -818,6 +868,7 @@ async def generate_case(characters: list[dict]) -> InvestigationCase:
             _gerar_openrouter,
             _gerar_openrouter_adicionais,
             characters,
+            culprit_id,
             tentativas=4,
             provider="OpenRouter",
         )
@@ -825,4 +876,4 @@ async def generate_case(characters: list[dict]) -> InvestigationCase:
         print(f"OpenRouter falhou: {_resumo_erro(openrouter_error)}")
 
     print("Todos os provedores de IA falharam. Usando caso fallback estático.")
-    return _caso_fallback_estatico(characters)
+    return _caso_fallback_estatico(characters, culprit_id)
