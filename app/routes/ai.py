@@ -70,12 +70,21 @@ questions.text em português brasileiro. Preserve name, name_pt e IDs
 exatamente como recebidos; não traduza name. Evite nomes/identidades nas
 perguntas. Prefira características compartilhadas por vários suspeitos e
 divisões razoáveis; evite características exclusivas de um personagem.
+O crime deve ser específico e criativo para este elenco: combine cenário,
+método, motivo possível, janela de tempo e evidências conflitantes, sem
+transformar o texto em uma ficha de poderes. Varie o tipo de ocorrência entre
+roubo, sabotagem, desaparecimento, chantagem, invasão ou acidente forjado
+quando os perfis permitirem. As clues devem criar hipóteses concorrentes:
+cada related_suspects deve conter de 2 a 6 IDs, nunca apenas um; não nomeie
+suspeitos, não revele um poder exclusivo e não diga quem é o culpado. Pelo
+menos uma clue deve ser compatível com o culpado e também com outro suspeito.
 Antes de incluir uma pergunta, confirme que a característica aparece nos
 perfis fornecidos e que a resposta ajuda a eliminar um grupo de suspeitos.
 Use perguntas concretas e objetivas; evite termos vagos como perigoso,
 poderoso, habilidoso ou conhecido sem definição factual no perfil. Teste uma
 única propriedade, não uma combinação. Varie as categorias e não reformule a
-mesma característica. A prioridade é: factualidade, clareza, utilidade para
+mesma característica: não repita famílias como combate corporal, contato
+alienígena, voo, sentidos ou treinamento militar. A prioridade é: factualidade, clareza, utilidade para
 investigação, não revelar um personagem e só então equilíbrio da divisão.
 Antes de escrever o JSON, crie internamente mais candidatas do que precisa,
 calcule as 10 respostas de cada uma e conte true/false. Descarte internamente
@@ -145,6 +154,8 @@ Se uma candidata falhar, substitua-a internamente; retorne exatamente
 {QUESTIONS_PER_CALL} perguntas aprovadas. Não use conhecimento externo da
 Marvel para completar o lote.
 Não repita nem seja semanticamente semelhante às perguntas aprovadas.
+Varie a família da característica: não gere outra pergunta sobre combate
+corporal, contato alienígena, voo, sentidos ou treinamento militar já usado.
 Cada answer deve ser booleano JSON true ou false, nunca texto, e cada
 suspect_id deve ser um dos 10 IDs inteiros fornecidos.
 Não retorne respostas isoladas, strings em questions ou objetos com question
@@ -179,6 +190,30 @@ def _termos_significativos(texto: str) -> set[str]:
     }
 
 
+def _familias_pergunta(texto: str) -> set[str]:
+    """Agrupa poucas reformulações óbvias sem tentar fazer NLP completo."""
+    normalizado = _normalizar_texto(texto)
+    familias: set[str] = set()
+    grupos = {
+        "combate_corporal": (
+            "combate corpo", "corpo a corpo", "artes marciais", "luta corporal",
+        ),
+        "contato_alienigena": (
+            "alienigena", "civilizacao alienigena", "fora da terra",
+            "extraterrestre", "outras civilizacoes",
+        ),
+        "voo": ("capacidade de voo", "pode voar", "voo autonomo", "voar"),
+        "sentidos": (
+            "sentidos aprimorados", "percepcao aprimorada", "visao agucada",
+            "audicao agucada", "olfato aprimorado",
+        ),
+    }
+    for familia, termos in grupos.items():
+        if any(termo in normalizado for termo in termos):
+            familias.add(familia)
+    return familias
+
+
 def _menciona_identidade(texto: str, characters: list) -> bool:
     """Impede que uma pergunta entregue um suspeito por nome/alter ego."""
     normalizado = f" {_normalizar_texto(texto)} "
@@ -204,6 +239,8 @@ def _menciona_identidade(texto: str, characters: list) -> bool:
 
 def _sao_semelhantes(primeira: Question, segunda: Question) -> bool:
     """Deduplicação simples e conservadora para perguntas."""
+    if _familias_pergunta(primeira.text) & _familias_pergunta(segunda.text):
+        return True
     termos_a = _termos_significativos(primeira.text)
     termos_b = _termos_significativos(segunda.text)
     if not termos_a or not termos_b:
@@ -407,22 +444,40 @@ def _validar_e_reparar(
             "O provider alterou o culpado sorteado pelo backend."
         )
 
+    grupos_de_clues: set[tuple[int, ...]] = set()
     for clue in case.clues:
         descricao_normalizada = _normalizar_texto(clue.description)
+        relacionados = tuple(sorted(set(clue.related_suspects)))
         if (
             not clue.description.strip()
             or not clue.related_suspects
             or len(clue.related_suspects) != len(set(clue.related_suspects))
             or not set(clue.related_suspects) <= suspeitos_ids
+            or len(relacionados) < 2
+            or len(relacionados) > 6
+            or relacionados in grupos_de_clues
+            or _menciona_identidade(clue.description, characters)
             or any(
                 marcador in descricao_normalizada
                 for marcador in (
                     "all suspects have an official name listed",
                     "todos os suspeitos tem um nome oficial listado",
+                    "apenas um suspeito",
+                    "somente um suspeito",
+                    "unico suspeito",
+                    "único suspeito",
                 )
             )
         ):
-            raise ValueError("Clue vazia, genérica ou com relacionados inválidos.")
+            raise ValueError("Clue vazia, repetida ou individualizante.")
+        grupos_de_clues.add(relacionados)
+
+    if case.clues and not any(
+        case.culprit_id == suspect_id
+        for clue in case.clues
+        for suspect_id in clue.related_suspects
+    ):
+        raise ValueError("Nenhuma clue relaciona o culpado a uma hipótese concorrente.")
 
     if diagnostico is not None:
         diagnostico["geradas"] = len(case.questions)
