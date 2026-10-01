@@ -53,60 +53,47 @@ def _build_prompt(characters: list, culprit_id: int) -> str:
         separators=(",", ":"),
     )
     return f"""
-Crie um caso Shield Noir usando exclusivamente estes 10 personagens.
-O backend já sorteou o culpado: use exatamente culprit_id={culprit_id}.
-Qualquer um dos 10 personagens pode ser o culpado, independentemente de ser
-herói, vilão ou anti-herói; não escolha outro ID. Gere 3 clues curtas e exatamente
-{QUESTIONS_PER_CALL} questions simples de sim/não; as perguntas restantes
-serão solicitadas depois. Cada question deve testar uma
-única característica sustentada pelo perfil; não misture propriedades nem
-invente fatos. Escreva description do caso e dos suspeitos em português
-brasileiro. Em crime_moment, escreva um álibi/depoimento individual e
-plausível: o que o suspeito afirma que estava fazendo no momento do crime
-para se defender, em 1 ou 2 frases. Inclua, quando fizer sentido, horário
-aproximado, local, atividade, testemunha ou registro que sustente a versão.
-Varie as desculpas; não repita frases genéricas. Escreva clues e
-questions.text em português brasileiro. Preserve name, name_pt e IDs
-exatamente como recebidos; não traduza name. Evite nomes/identidades nas
-perguntas. Prefira características compartilhadas por vários suspeitos e
-divisões razoáveis; evite características exclusivas de um personagem.
-O crime deve ser específico e criativo para este elenco: combine cenário,
-método, motivo possível, janela de tempo e evidências conflitantes, sem
-transformar o texto em uma ficha de poderes. Varie o tipo de ocorrência entre
-roubo, sabotagem, desaparecimento, chantagem, invasão ou acidente forjado
-quando os perfis permitirem. As clues devem criar hipóteses concorrentes:
-cada related_suspects deve conter de 2 a 6 IDs, nunca apenas um; não nomeie
-suspeitos, não revele um poder exclusivo e não diga quem é o culpado. Pelo
-menos uma clue deve ser compatível com o culpado e também com outro suspeito.
-Antes de incluir uma pergunta, confirme que a característica aparece nos
-perfis fornecidos e que a resposta ajuda a eliminar um grupo de suspeitos.
-Use perguntas concretas e objetivas; evite termos vagos como perigoso,
-poderoso, habilidoso ou conhecido sem definição factual no perfil. Teste uma
-única propriedade, não uma combinação. Varie as categorias e não reformule a
-mesma característica: não repita famílias como combate corporal, contato
-alienígena, voo, sentidos ou treinamento militar. A prioridade é: factualidade, clareza, utilidade para
-investigação, não revelar um personagem e só então equilíbrio da divisão.
-Antes de escrever o JSON, crie internamente mais candidatas do que precisa,
-calcule as 10 respostas de cada uma e conte true/false. Descarte internamente
-qualquer candidata vaga, inventada, repetida, identificadora ou com divisão
-0/10, 1/9, 2/8, 8/2, 9/1 ou 10/0; uma pergunta com menos de 3 ou mais de
-7 respostas true é inválida, mesmo que pareça factual. Substitua-a por outra
-candidata factual. Só retorne exatamente {QUESTIONS_PER_CALL} perguntas
-aprovadas, com divisão 5/5, 4/6, 6/4, 3/7 ou 7/3. Não use conhecimento
-externo da Marvel: se a característica não estiver clara no perfil recebido,
-não use a pergunta. Não mostre esse raciocínio.
-Relacione em cada clue somente suspeitos justificáveis pelos dados fornecidos.
-Use exatamente os ids, names e name_pt recebidos, como inteiros. Em answers,
-suspect_id deve ser um desses IDs e answer deve ser booleano JSON true ou
-false, nunca texto.
-Retorne somente JSON válido, sem markdown ou explicação, com id, culprit_id,
-description, suspects, clues e questions. Use exatamente os 10 ids da lista:
-não omita, invente ou troque suspects. O formato interno obrigatório é:
-suspects=[{{id,name,name_pt,description,crime_moment}}],
-clues=[{{id,description,related_suspects}}],
-questions=[{{id,text,answers:[{{suspect_id,answer}}]}}]. Cada suspect precisa
-ter description e crime_moment; cada question precisa ter answers para os
-10 suspects.
+Você é o motor lógico do Shield Noir. Gere um caso usando SOMENTE os 10
+personagens em PERSONAGENS. O backend já escolheu o culpado: mantenha
+culprit_id={culprit_id}, sem trocar, inventar ou favorecer heróis/vilões.
+
+SAÍDA DO CASO
+- Retorne exatamente um JSON válido, sem markdown, comentários ou explicação.
+- Mantenha id, name, name_pt e IDs dos personagens exatamente como recebidos.
+- Retorne os 10 suspects, 3 clues e exatamente {QUESTIONS_PER_CALL} questions.
+- Escreva description, suspects, clues, crime_moment e questions.text em
+  português brasileiro.
+- Cada suspect deve ter description curta e crime_moment em 1–2 frases: uma
+  defesa plausível do que afirma estar fazendo na hora do crime, com horário,
+  local, atividade, testemunha ou registro quando fizer sentido. Varie os
+  álibis e inclua alguma dúvida plausível; não liste poderes.
+- Crie um crime específico para este elenco, com método, janela de tempo e
+  evidências que permitam hipóteses concorrentes. Cada clue deve ser curta,
+  factual e ter 2–6 related_suspects. Nunca revele o culpado.
+
+PROTOCOLO OBRIGATÓRIO PARA QUESTIONS
+1. Use apenas fatos explícitos em deck/powers dos perfis. Não use memória ou
+   conhecimento externo da Marvel. Uma resposta true só é permitida quando o
+   perfil sustenta claramente a característica; caso contrário, marque false.
+2. Antes de escrever, crie internamente uma matriz: para cada candidata,
+   escreva os 10 IDs e as 10 respostas booleanas. Só aprove uma candidata
+   factual, concreta, em português, de uma única característica e que divida
+   o elenco em 3/7, 4/6, 5/5, 6/4 ou 7/3.
+3. Priorize nesta ordem: 5/5, depois 4/6 ou 6/4, depois 3/7 ou 7/3.
+   Nunca retorne 0/10, 1/9, 2/8, 8/2, 9/1 ou 10/0. Se uma candidata falhar,
+   descarte-a antes de escrever e escolha outra característica compartilhada.
+4. As {QUESTIONS_PER_CALL} perguntas precisam ser diferentes entre si e cobrir
+   famílias diferentes. Não reformule a mesma habilidade ou categoria.
+5. Pergunte uma única propriedade verificável por vez. Não use nomes, aliases,
+   identidade civil, título, alter ego ou uma característica tão exclusiva
+   que identifique um único personagem. Evite também perguntas vagas como
+   “é poderoso”, “é habilidoso” ou “é conhecido”.
+6. Cada question deve ter text e exatamente 10 answers: uma resposta por cada
+   ID, sem repetição ou omissão. answer é booleano JSON true/false, nunca texto.
+   As respostas devem seguir a mesma regra factual da pergunta, não o culpado.
+
+Não exponha a matriz nem o raciocínio. O JSON final deve conter somente os
+campos id, culprit_id, description, suspects, clues e questions.
 
 PERSONAGENS={characters_json}
 """
@@ -130,36 +117,30 @@ def _build_additional_questions_prompt(
         separators=(",", ":"),
     )
     proximo_id = max((pergunta.id for pergunta in perguntas_aprovadas), default=0) + 1
-    exemplo_ids = [_to_dict(character)["id"] for character in characters[:2]]
     return f"""
-Gere somente novas perguntas para o caso existente. Não gere um novo caso,
-id do caso, culprit_id, description, suspects ou clues. Retorne somente JSON
-válido neste formato: {{"questions":[{{"id":{proximo_id},"text":"O suspeito possui poderes elétricos?","answers":[{{"suspect_id":{exemplo_ids[0]},"answer":true}},{{"suspect_id":{exemplo_ids[1]},"answer":false}}]}}]}}.
+Complete o lote de perguntas do caso existente. Retorne somente um JSON
+válido com o campo questions. Não retorne caso, culprit_id, description,
+suspects ou clues.
 
-Gere exatamente {QUESTIONS_PER_CALL} perguntas novas em português brasileiro.
-Cada elemento de questions é uma pergunta completa com id inteiro, text e answers.
-Cada pergunta deve conter exatamente uma resposta para cada um dos 10
-suspeitos. Use IDs de perguntas a partir de {proximo_id}, sem reutilizar IDs
-aprovados. Evite identidade direta, prefira características compartilhadas e
-divida razoavelmente os 10 suspeitos. Aplique os mesmos critérios das
-perguntas principais: use somente fatos sustentados pelos perfis, seja
-concreto e útil para eliminar suspeitos, teste uma única característica,
-evite termos vagos, nomes, aliases, títulos, poderes ou organizações que
-identifiquem diretamente alguém e varie em relação às perguntas aprovadas.
-Aceite uma pergunta somente se ela for factual, clara, útil, distinta e
-dividir os suspeitos em grupos. Antes de responder, calcule as 10 respostas
-de cada candidata e descarte qualquer divisão diferente de 5/5, 4/6, 6/4,
-3/7 ou 7/3. Menos de 3 ou mais de 7 respostas true invalida a candidata.
-Se uma candidata falhar, substitua-a internamente; retorne exatamente
-{QUESTIONS_PER_CALL} perguntas aprovadas. Não use conhecimento externo da
-Marvel para completar o lote.
-Não repita nem seja semanticamente semelhante às perguntas aprovadas.
-Varie a família da característica: não gere outra pergunta sobre combate
-corporal, contato alienígena, voo, sentidos ou treinamento militar já usado.
-Cada answer deve ser booleano JSON true ou false, nunca texto, e cada
-suspect_id deve ser um dos 10 IDs inteiros fornecidos.
-Não retorne respostas isoladas, strings em questions ou objetos com question
-no lugar de text. Não use "Sim", "Não", "true" ou "false" como strings.
+Gere exatamente {QUESTIONS_PER_CALL} perguntas novas, numeradas a partir de
+{proximo_id}. Cada uma deve ter text em português brasileiro e exatamente 10
+answers: uma entrada para cada ID de PERSONAGENS, sem duplicatas, com answer
+booleano JSON true/false. Não retorne exemplos, explicações ou markdown.
+
+Use este processo antes da saída:
+1. Monte internamente uma matriz de 10 IDs por candidata. Use somente fatos
+   explícitos nos perfis; true exige suporte claro no perfil, false caso não
+   haja suporte. Não use conhecimento externo.
+2. Só mantenha candidatas de uma única característica, concretas, factuais e
+   equilibradas: 5/5 é melhor; depois 4/6 ou 6/4; depois 3/7 ou 7/3.
+   Descarte 0/10, 1/9, 2/8, 8/2, 9/1 e 10/0 antes de escrever.
+3. Faça as {QUESTIONS_PER_CALL} perguntas cobrirem famílias diferentes.
+   Não repita, parafraseie ou aproxime semanticamente nenhuma pergunta de
+   PERGUNTAS_APROVADAS. Não use nomes, aliases, identidades, títulos,
+   características exclusivas, perguntas vagas ou propriedades combinadas.
+4. Se uma candidata falhar em qualquer regra, descarte-a e substitua-a por
+   outra característica compartilhada antes de responder. Nunca preencha o
+   lote com perguntas individualizantes só para atingir a quantidade.
 
 PERGUNTAS_APROVADAS={perguntas_aprovadas_json}
 PERSONAGENS={characters_json}
