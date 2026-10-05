@@ -1,3 +1,4 @@
+import asyncio
 import random
 import httpx
 
@@ -14,6 +15,7 @@ IMAGE_URL_FIELDS = (
     "small_url",
     "icon_url",
 )
+_PROFILE_FACTS_CACHE: dict[int, dict] = {}
 
 
 def _extract_image_url(character: dict) -> str | None:
@@ -35,8 +37,36 @@ def prepare_character(character: dict, catalog_entry: dict) -> CharacterData:
         image_url=_extract_image_url(character),
         real_name=character.get("real_name"),
         deck=character.get("deck"),
-        powers=character.get("powers", []),
+        origin=character.get("origin"),
+        teams=character.get("teams"),
+        powers=character.get("powers"),
     )
+
+
+async def _fetch_profile_facts(client: httpx.AsyncClient, character_id: int) -> dict:
+    cached = _PROFILE_FACTS_CACHE.get(character_id)
+    if cached is not None:
+        return cached
+
+    response = await client.get(
+        f"{BASE_URL}character/4005-{character_id}/",
+        params={
+            "api_key": COMIC_VINE_API_KEY,
+            "format": "json",
+            "field_list": "id,origin,powers,teams",
+        },
+        headers={"User-Agent": "ShieldNoir/1.0"},
+    )
+    response.raise_for_status()
+    payload = response.json()
+    result = payload.get("results")
+    if payload.get("status_code") != 1 or not isinstance(result, dict):
+        raise RuntimeError("Comic Vine não retornou o perfil detalhado.")
+
+    facts = {field: result.get(field) for field in ("origin", "powers", "teams")}
+    if isinstance(facts["powers"], list) and isinstance(facts["teams"], list):
+        _PROFILE_FACTS_CACHE[character_id] = facts
+    return facts
     
 async def get_characters_by_ids(character_ids: list[int]):
     """Fetches multiple characters by their IDs in batches."""
@@ -57,7 +87,7 @@ async def get_characters_by_ids(character_ids: list[int]):
                     "api_key": COMIC_VINE_API_KEY,
                     "format": "json",
                     "filter": f"id:{ids}",
-                    "field_list": "id,name,real_name,deck,powers,teams,publisher,image",
+                    "field_list": "id,name,real_name,deck,origin,powers,teams,publisher,image",
                     "limit": len(batch),
                 },
                 headers={
@@ -74,6 +104,25 @@ async def get_characters_by_ids(character_ids: list[int]):
                 )
 
             characters.extend(data["results"])
+
+        details = await asyncio.gather(
+            *(_fetch_profile_facts(client, character["id"]) for character in characters),
+            return_exceptions=True,
+        )
+        unavailable = 0
+        for character, detail in zip(characters, details):
+            if isinstance(detail, Exception):
+                unavailable += 1
+                continue
+            for field in ("origin", "powers", "teams"):
+                if detail.get(field) is not None:
+                    character[field] = detail[field]
+
+        if unavailable:
+            print(
+                f"[Comic Vine] Perfis detalhados indisponíveis="
+                f"{unavailable}/{len(characters)}"
+            )
 
     return characters
 

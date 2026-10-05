@@ -7,7 +7,9 @@ class CharacterData(BaseModel):
     image_url: str | None = None
     real_name: str | None = None
     deck: str | None = None
-    powers: list[dict] = []
+    origin: dict | None = None
+    teams: list[dict] | None = None
+    powers: list[dict] | None = None
 
 class Suspect(BaseModel):
     id: StrictInt
